@@ -1,0 +1,2 @@
+/api/* http://adportal.runasp.net/:splat 200
+/*    /index.html   200
