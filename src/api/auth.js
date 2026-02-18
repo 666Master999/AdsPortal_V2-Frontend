@@ -1,5 +1,5 @@
 // frontend/src/api/auth.js
-import { useAuthStore } from '../stores/auth';
+import { useAuthStore } from '../stores/authStore';
 
 export default {
   register(payload) {
