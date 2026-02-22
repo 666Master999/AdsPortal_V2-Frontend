@@ -30,9 +30,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useAuthStore } from '@/stores/authStore'; // убедитесь, что файл существует
 import { apiClient } from '@/api/apiClient'; // опционально: использовать общий клиент
+import { useAbortable } from '@/composables/useAbortable';
 
 const auth = useAuthStore();
 
@@ -41,35 +42,23 @@ const isDbConnected = ref(false);
 const backendTooltip = ref('');
 const dbTooltip = ref('');
 
-let abortController = null;
+const { run } = useAbortable('Health check failed');
 
 async function fetchHealth() {
-  // отменяем предыдущий запрос, если есть
-  if (abortController) {
-    abortController.abort();
-  }
-  abortController = new AbortController();
-
   try {
-    // используем общий клиент; если хотите через стор — auth.client или auth.api
-    const res = await apiClient.get('/api/health', { signal: abortController.signal });
-    // пример ожидаемой структуры: { backend: true, db: true }
-    isBackendConnected.value = !!res.data.backend;
-    isDbConnected.value = !!res.data.db;
-    backendTooltip.value = `status: ${isBackendConnected.value ? 'ok' : 'error'}`;
-    dbTooltip.value = `status: ${isDbConnected.value ? 'ok' : 'error'}`;
-  } catch (err) {
-    if (err.name === 'CanceledError' || err.name === 'AbortError') {
-      // запрос отменён — ничего не делаем
-      return;
+    const res = await run(signal => apiClient.get('/api/health', { signal }));
+    if (res) {
+      isBackendConnected.value = !!res.data.backend;
+      isDbConnected.value = !!res.data.db;
+      backendTooltip.value = `status: ${isBackendConnected.value ? 'ok' : 'error'}`;
+      dbTooltip.value = `status: ${isDbConnected.value ? 'ok' : 'error'}`;
     }
-    console.error('Health check failed', err);
+  } catch (e) {
+    // run already set error and logged via getErrorMessage
     isBackendConnected.value = false;
     isDbConnected.value = false;
     backendTooltip.value = 'cannot reach backend';
     dbTooltip.value = 'cannot reach backend';
-  } finally {
-    abortController = null;
   }
 }
 
@@ -92,9 +81,6 @@ onMounted(async () => {
   }
 });
 
-onBeforeUnmount(() => {
-  if (abortController) abortController.abort();
-});
 </script>
 
 <style scoped>

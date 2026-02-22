@@ -2,7 +2,9 @@ import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 const Login = () => import('../pages/Login.vue');
 const Register = () => import('../pages/Register.vue');
+const Profile = () => import('../pages/Profile.vue');
 const UserProfile = () => import('../pages/UserProfile.vue');
+const CreateAd = () => import('../pages/CreateAd.vue');
 
 import { useAuthStore } from '../stores/authStore';
 
@@ -10,8 +12,11 @@ const routes = [
   { path: '/', name: 'home', component: HomeView },
   { path: '/login', name: 'login', component: Login, meta: { guestOnly: true } },
   { path: '/register', name: 'register', component: Register, meta: { guestOnly: true } },
-  // просмотр профиля по publicId (numeric)
-  { path: '/users/:id', name: 'userProfile', component: UserProfile, props: true }
+  // Свой профиль (редактирование) — только для авторизованных
+  { path: '/profile/edit', name: 'profileEdit', component: Profile, meta: { requiresAuth: true } },
+  // Профили других пользователей (просмотр) — только для авторизованных
+  { path: '/profiles/:id', name: 'userProfile', component: UserProfile, props: true, meta: { requiresAuth: true } },
+  { path: '/ads/create', name: 'createAd', component: CreateAd, meta: { requiresAuth: true } }
 ];
 
 const router = createRouter({
@@ -22,12 +27,10 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const auth = useAuthStore();
 
-  if (!auth.initialized) {
-    try {
-      await auth.init();
-    } catch (err) {
-      console.warn('Auth init failed in router guard', err);
-    }
+  try {
+    await auth.init();
+  } catch (err) {
+    console.warn('Auth init failed in router guard', err);
   }
 
   const requiresAuth = !!to.meta?.requiresAuth;

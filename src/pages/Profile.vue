@@ -5,7 +5,7 @@
       <div class="card shadow-sm">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start mb-3">
-            <h4 class="card-title">Профиль</h4>
+            <h4 class="card-title">Мой профиль</h4>
             <button class="btn btn-sm btn-danger" @click="onLogout">Выйти</button>
           </div>
 
@@ -15,8 +15,24 @@
 
           <div v-else>
             <div class="mb-3">
+              <label class="form-label text-muted">Аватар</label>
+              <div>
+                <img
+                  v-if="profile.avatarUrl"
+                  :src="profile.avatarUrl"
+                  :alt="profile.login"
+                  class="rounded-circle"
+                  style="width: 100px; height: 100px; object-fit: cover;"
+                />
+                <div v-else class="bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 100px; height: 100px;">
+                  <span class="text-muted">Нет аватара</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-3">
               <label class="form-label text-muted">Логин</label>
-              <div class="form-control-plaintext"><strong>{{ profile.login }}</strong></div>
+              <div class="form-control-plaintext"><strong>{{ displayLogin }}</strong></div>
             </div>
 
             <div class="mb-3">
@@ -42,15 +58,21 @@
           <div v-if="error" class="alert alert-danger mt-3">{{ error }}</div>
         </div>
       </div>
+
+      <!-- Edit profile form and password change -->
+      <ProfileEditor v-if="!loading" :profile="profile" @updated="onProfileUpdated" />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { formatDate } from '@/utils/format';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
-import { apiClient } from '@/api/apiClient';
+import { fetchMyProfile } from '@/api/profileService';
+import { useAbortable } from '@/composables/useAbortable';
+import ProfileEditor from '@/components/ProfileEditor.vue';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -60,49 +82,30 @@ const profile = ref({
   login: '',
   email: null,
   phone: null,
+  avatarUrl: null,
   createdAt: null
 });
-const loading = ref(true);
-const error = ref(null);
 
-const formattedDate = computed(() => {
-  if (!profile.value.createdAt) return '—';
-  try {
-    return new Date(profile.value.createdAt).toLocaleString();
-  } catch {
-    return profile.value.createdAt;
-  }
-});
+const displayLogin = computed(() => profile.value.login || '');
 
-let abortController = null;
+const { loading, error, run } = useAbortable('Не удалось загрузить профиль');
+
+const formattedDate = computed(() => formatDate(profile.value.createdAt));
 
 async function loadProfile() {
-  loading.value = true;
-  error.value = null;
-
-  if (abortController) {
-    try { abortController.abort(); } catch {}
-  }
-  abortController = new AbortController();
-
   try {
-    const res = await apiClient.get('/api/users/me', { signal: abortController.signal });
-    profile.value = res.data;
+    const res = await run(signal => fetchMyProfile({ signal }));
+    if (res) profile.value = res.data;
   } catch (err) {
-    if (err.name === 'CanceledError' || err.name === 'AbortError') return;
-
-    console.error('Profile load error', err);
-    if (err?.response?.status === 401) {
-      auth.logout();
-      router.replace({ name: 'login' });
-      return;
-    }
-
-    error.value = err?.response?.data?.message || 'Не удалось загрузить профиль';
-  } finally {
-    loading.value = false;
-    abortController = null;
+    // 401 errors handled globally by interceptor
+    // error message already set by run
   }
+}
+
+function onProfileUpdated(updatedProfile) {
+  // Update local profile with returned data
+  Object.assign(profile.value, updatedProfile);
+  error.value = '';
 }
 
 function onLogout() {
@@ -112,16 +115,11 @@ function onLogout() {
 
 onMounted(async () => {
   try {
-    if (!auth.initialized) {
-      if (typeof auth.init === 'function') await auth.init();
-      else if (typeof auth.initAuth === 'function') await auth.initAuth();
-    }
-
+    await auth.init();
     if (!auth.isAuthenticated) {
       router.replace({ name: 'login' });
       return;
     }
-
     await loadProfile();
   } catch (err) {
     console.warn('Auth init or profile load failed', err);
@@ -129,12 +127,6 @@ onMounted(async () => {
   }
 });
 
-onBeforeUnmount(() => {
-  if (abortController) {
-    try { abortController.abort(); } catch {}
-    abortController = null;
-  }
-});
 </script>
 
 <style scoped>

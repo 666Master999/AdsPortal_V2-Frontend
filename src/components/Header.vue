@@ -5,12 +5,16 @@
 
       <div class="d-flex align-items-center">
         <template v-if="isAuthenticated">
-          <div class="me-3 text-muted small">Привет, <strong>{{ username }}</strong></div>
+          <div class="me-3 text-muted small">Привет, <strong>{{ login }}</strong></div>
 
           <button class="btn btn-outline-secondary me-2" :disabled="loading" @click="goToMyProfile">
             <span v-if="!loading">Кабинет</span>
             <span v-else>Загрузка...</span>
           </button>
+
+          <!-- вставить рядом с Кабинет/Выйти -->
+          <router-link class="btn btn-success me-2" :to="{ name: 'createAd' }">Создать объявление</router-link>
+
 
           <button class="btn btn-danger" @click="onLogout">Выйти</button>
         </template>
@@ -27,43 +31,37 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import axios from 'axios';
 import { useAuthStore } from '@/stores/authStore';
+import { getErrorMessage } from '@/utils/authUtils';
 
 const router = useRouter();
 const auth = useAuthStore();
 
 const loading = ref(false);
 const isAuthenticated = computed(() => !!auth.isAuthenticated);
-const username = computed(() => auth.username ?? auth.login ?? '');
+const login = computed(() => auth.userLogin);
 
-// Получаем publicId из стора, если есть
+// helper returns store getter value directly
 function getPublicId() {
-  const raw = auth.publicId ?? auth.userId ?? auth.id ?? auth.user?.publicId;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? String(Math.trunc(n)) : null;
+  return auth.userId;
 }
 
 async function goToMyProfile() {
-  const idFromStore = getPublicId();
-  if (idFromStore) return router.push({ name: 'userProfile', params: { id: idFromStore } });
-
-  loading.value = true;
-  try {
-    const res = await axios.get('/api/users/me', { withCredentials: true, timeout: 8000 });
-    const id = res?.data?.publicId ?? res?.data?.public_id ?? res?.data?.id;
-    const n = Number(id);
-    if (Number.isFinite(n) && n > 0) {
-      // опционально: обновить стор, если есть метод
-      if (typeof auth.setPublicId === 'function') auth.setPublicId(String(Math.trunc(n)));
-      return router.push({ name: 'userProfile', params: { id: String(Math.trunc(n)) } });
+  let id = auth.userId;
+  if (!id) {
+    loading.value = true;
+    try {
+      id = await auth.fetchUserId();
+    } catch (e) {
+      console.warn('fetchUserId failed', getErrorMessage(e));
+    } finally {
+      loading.value = false;
     }
-  } catch (e) {
-    console.warn('Не удалось получить publicId', e);
-  } finally {
-    loading.value = false;
   }
-  // fallback: домой
+
+  if (id) {
+    return router.push({ name: 'userProfile', params: { id } });
+  }
   router.push({ name: 'home' });
 }
 

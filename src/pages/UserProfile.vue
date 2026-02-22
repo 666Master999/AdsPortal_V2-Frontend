@@ -4,9 +4,11 @@
       <div class="card shadow-sm">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start mb-3">
-            <h4 class="card-title">Профиль пользователя</h4>
-            <button class="btn btn-sm btn-danger" @click="onLogout" v-if="isOwnProfile">Выйти</button>
-          </div>
+            <h4 class="card-title">{{ isOwnProfile ? 'Мой профиль' : 'Профиль пользователя' }}</h4>
+            <router-link v-if="isOwnProfile" class="btn btn-sm btn-primary" :to="{ name: 'profileEdit' }">
+              Редактировать
+            </router-link>
+        </div>
 
           <div v-if="loading" class="text-center py-4">
             <div class="spinner-border text-primary" role="status"></div>
@@ -14,8 +16,24 @@
 
           <div v-else>
             <div class="mb-3">
+              <label class="form-label text-muted">Аватар</label>
+              <div>
+                <img
+                  v-if="profile.avatarUrl"
+                  :src="profile.avatarUrl"
+                  :alt="profile.login"
+                  class="rounded-circle"
+                  style="width: 100px; height: 100px; object-fit: cover;"
+                />
+                <div v-else class="bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 100px; height: 100px;">
+                  <span class="text-muted">Нет аватара</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-3">
               <label class="form-label text-muted">Логин</label>
-              <div class="form-control-plaintext"><strong>{{ profile.login }}</strong></div>
+              <div class="form-control-plaintext"><strong>{{ displayLogin }}</strong></div>
             </div>
 
             <div class="mb-3">
@@ -46,57 +64,38 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { formatDate } from '@/utils/format';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
-import { apiClient } from '@/api/apiClient';
+import { fetchUserProfile } from '@/api/profileService';
+import { useAbortable } from '@/composables/useAbortable';
 
 const props = defineProps({ id: { type: String, required: true } });
 const router = useRouter();
 const auth = useAuthStore();
 
 const profile = ref({});
-const loading = ref(true);
-const error = ref(null);
+const displayLogin = computed(() => profile.value.login || '');
+const { loading, error, run } = useAbortable('Не удалось загрузить профиль');
 
-const formattedDate = computed(() => {
-  if (!profile.value.createdAt) return '—';
-  try { return new Date(profile.value.createdAt).toLocaleString(); }
-  catch { return profile.value.createdAt; }
-});
+const formattedDate = computed(() => formatDate(profile.value.createdAt));
 
 const isOwnProfile = computed(() => {
-  // если в сторе есть username или id — сравниваем
-  return auth.username && (auth.username === profile.value.login || auth.userId === props.id);
+  // делегируем проверку на стор
+  return auth.isOwn(props.id);
 });
 
-let abortController = null;
-
 async function loadProfile() {
-  loading.value = true;
-  error.value = null;
-
-  if (abortController) { try { abortController.abort(); } catch {} }
-  abortController = new AbortController();
-
   try {
-    const res = await apiClient.get(`/api/users/${props.id}`, { signal: abortController.signal });
-    profile.value = res.data;
+    const res = await run(signal => fetchUserProfile(props.id, { signal }));
+    if (res) profile.value = res.data;
   } catch (err) {
-    if (err.name === 'CanceledError' || err.name === 'AbortError') return;
     if (err?.response?.status === 404) {
       error.value = 'Пользователь не найден';
       return;
     }
-    if (err?.response?.status === 401) {
-      auth.logout();
-      router.replace({ name: 'login' });
-      return;
-    }
-    error.value = err?.response?.data?.message || 'Не удалось загрузить профиль';
-  } finally {
-    loading.value = false;
-    abortController = null;
+    // 401 will be handled globally; other errors already stored in error
   }
 }
 
@@ -107,10 +106,7 @@ function onLogout() {
 
 onMounted(async () => {
   try {
-    if (!auth.initialized) {
-      if (typeof auth.init === 'function') await auth.init();
-      else if (typeof auth.initAuth === 'function') await auth.initAuth();
-    }
+    await auth.init();
     await loadProfile();
   } catch (err) {
     console.warn(err);
@@ -118,9 +114,6 @@ onMounted(async () => {
   }
 });
 
-onBeforeUnmount(() => {
-  if (abortController) try { abortController.abort(); } catch {}
-});
 
 // если id меняется (переход между профилями) — перезагрузим
 watch(() => props.id, () => loadProfile());

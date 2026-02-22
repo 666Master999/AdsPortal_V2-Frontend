@@ -14,11 +14,7 @@ app.use(router);
   try {
     // useAuthStore(pinia) — допустимо, т.к. pinia уже зарегистрирован
     const auth = useAuthStore(pinia);
-    if (typeof auth.init === 'function') {
-      await auth.init(); // ожидаем инициализацию токена/профиля
-    } else if (typeof auth.initAuth === 'function') {
-      await auth.initAuth();
-    }
+    await auth.init(); // ожидаем инициализацию токена/профиля
   } catch (err) {
     // логируем, но не блокируем монтирование
     // console.error('Auth init failed', err);
