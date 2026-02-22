@@ -31,31 +31,8 @@ apiClient.interceptors.response.use(
     const status = error?.response?.status;
 
     if (status === 401) {
-      // Dynamic import to avoid circular dependency
-      (async () => {
-        try {
-          const { useAuthStore } = await import('@/stores/authStore');
-          const { default: router } = await import('@/router');
-          
-          const auth = useAuthStore();
-          try {
-            auth.logout();
-          } catch (err) {
-            console.error('Error during logout:', err);
-          }
-
-          // Используем setTimeout чтобы router был инициализирован
-          setTimeout(() => {
-            try {
-              router.replace({ name: 'login' });
-            } catch (err) {
-              console.error('Error redirecting to login:', err);
-            }
-          }, 100);
-        } catch (err) {
-          console.error('Error in 401 handler:', err);
-        }
-      })();
+      // Не разлогиниваем автоматически — просто прокидываем ошибку наверх
+      console.warn('Unauthorized response', error?.response?.data);
     }
 
     return Promise.reject(error);

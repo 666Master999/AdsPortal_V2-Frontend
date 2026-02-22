@@ -90,9 +90,21 @@ export function getErrorMessage(error: any, defaultMessage: string = 'Ошибк
     return error;
   }
 
+  const data = error.response?.data;
+
   // Axios response error
-  if (error.response?.data?.message) {
-    return String(error.response.data.message);
+  if (data?.message) {
+    return String(data.message);
+  }
+
+  // Backend may return { error: '...'}
+  if (data?.error) {
+    return String(data.error);
+  }
+
+  // Validation errors map: { errors: { field: msg } }
+  if (data?.errors && typeof data.errors === 'object') {
+    return formatValidationErrors(data.errors as Record<string, string | string[]>);
   }
 
   // Axios/fetch error

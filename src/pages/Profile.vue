@@ -18,14 +18,15 @@
               <label class="form-label text-muted">Аватар</label>
               <div>
                 <img
-                  v-if="profile.avatarUrl"
-                  :src="profile.avatarUrl"
+                  v-if="avatarSrc"
+                  :src="avatarSrc"
                   :alt="profile.login"
                   class="rounded-circle"
                   style="width: 100px; height: 100px; object-fit: cover;"
                 />
-                <div v-else class="bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 100px; height: 100px;">
-                  <span class="text-muted">Нет аватара</span>
+                <div v-else class="bg-light rounded-circle d-flex align-items-center justify-content-center text-uppercase" style="width: 100px; height: 100px; font-size:36px; font-weight:600; color:#495057;">
+                  <span v-if="initialLetter">{{ initialLetter }}</span>
+                  <span v-else class="text-muted">—</span>
                 </div>
               </div>
             </div>
@@ -68,6 +69,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { formatDate } from '@/utils/format';
+import { API_BASE_URL } from '@/config/apiConfig';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchMyProfile } from '@/api/profileService';
@@ -89,9 +91,22 @@ const profile = ref<UserProfile>({
 
 const displayLogin = computed(() => profile.value.login || '');
 
-const { loading, error, run } = useAbortable('Не удалось загрузить профиль');
+const avatarSrc = computed((): string | null => {
+  const url = profile.value.avatarUrl || profile.value.avatar || null;
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const base = API_BASE_URL.replace(/\/$/, '');
+  return (url.startsWith('/') ? base + url : base + '/' + url);
+});
+
+const initialLetter = computed(() => {
+  const name = profile.value.login || profile.value.login || '';
+  return name ? String(name).trim().charAt(0).toUpperCase() : '';
+});
 
 const formattedDate = computed(() => formatDate(profile.value.createdAt));
+
+const { loading, error, run } = useAbortable('Не удалось загрузить профиль');
 
 async function loadProfile() {
   try {

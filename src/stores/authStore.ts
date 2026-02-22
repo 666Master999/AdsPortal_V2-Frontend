@@ -10,7 +10,7 @@
 
 import { defineStore } from 'pinia';
 import { apiClient } from '@/api/apiClient';
-import { TOKEN_KEY } from '@/config/apiConfig';
+import { TOKEN_KEY, API_ENDPOINTS } from '@/config/apiConfig';
 import { isTokenExpired } from '@/utils/authUtils';
 import type { AuthPayload, AuthState } from '@/types';
 
@@ -61,9 +61,9 @@ export const useAuthStore = defineStore('auth', {
     userId: (state) => (state.publicId != null ? String(state.publicId) : null),
 
     /**
-     * Проверка если пользователь авторизован
+     * Проверка если пользователь авторизован и токен не протух
      */
-    isAuthenticated: (state) => !!(state.login || state.publicId),
+    isAuthenticated: (state) => Boolean(state.token && !isTokenExpired(state.token)),
 
     /**
      * Проверка истечения срока действия токена
@@ -199,22 +199,27 @@ export const useAuthStore = defineStore('auth', {
       const token = localStorage.getItem(STORAGE_KEY);
 
       if (token) {
-        this.token = token;
-        this.setAuthToken(token);
+        // Если токен уже истёк — сразу очищаем и не пускаем пользователя как авторизованного
+        if (isTokenExpired(token)) {
+          this.logout();
+        } else {
+          this.token = token;
+          this.setAuthToken(token);
 
-        const payload = this.decodeJwtPayload(token);
-        this.applyPayload(payload);
+          const payload = this.decodeJwtPayload(token);
+          this.applyPayload(payload);
 
-        // Если данные не получены из токена — запросим профиль
-        if (!this.publicId && !this.login) {
-          try {
-            const res = await this.client.get('/api/users/profile');
-            const data = res?.data || {};
-            this.login = this.login ?? data.login ?? data.username ?? null;
-            this.setPublicId(data.publicId ?? data.id ?? data.userId ?? null);
-          } catch {
-            // Токен невалиден — логируем пользователя
-            this.logout();
+          // Если данные не получены из токена — запросим профиль
+          if (!this.publicId && !this.login) {
+            try {
+              const res = await this.client.get(API_ENDPOINTS.USERS_PROFILE);
+              const data = res?.data || {};
+              this.login = this.login ?? data.login ?? data.username ?? null;
+              this.setPublicId(data.publicId ?? data.id ?? data.userId ?? null);
+            } catch {
+              // Токен невалиден — логируем пользователя
+              this.logout();
+            }
           }
         }
       }
@@ -286,7 +291,7 @@ export const useAuthStore = defineStore('auth', {
       if (this.publicId) return this.publicId;
 
       try {
-        const res = await this.client.get('/api/users/profile');
+        const res = await this.client.get(API_ENDPOINTS.USERS_PROFILE);
         const data = res?.data || {};
 
         this.login = this.login ?? data.login ?? data.username ?? null;
@@ -308,7 +313,7 @@ export const useAuthStore = defineStore('auth', {
      */
     async refreshToken(): Promise<boolean> {
       try {
-        const res = await this.client.post('/api/auth/refresh');
+        const res = await this.client.post(API_ENDPOINTS.AUTH_REFRESH);
         const newToken = res?.data?.token || res?.data?.accessToken;
 
         if (newToken) {

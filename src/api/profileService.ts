@@ -11,6 +11,7 @@
 
 import { AxiosResponse } from 'axios';
 import { apiClient } from './apiClient';
+import { API_ENDPOINTS } from '@/config/apiConfig';
 import type { UserProfile } from '@/types';
 
 /**
@@ -56,7 +57,7 @@ export interface ChangePasswordPayload {
  * ```
  */
 export async function fetchMyProfile(options?: { signal?: AbortSignal }): Promise<AxiosResponse<UserProfile>> {
-  return apiClient.get('/api/users/profile', options);
+  return apiClient.get(API_ENDPOINTS.USERS_PROFILE, options);
 }
 
 /**
@@ -78,7 +79,7 @@ export async function fetchUserProfile(
   id: string | number,
   options?: { signal?: AbortSignal }
 ): Promise<AxiosResponse<UserProfile>> {
-  return apiClient.get(`/api/users/profiles/${id}`, options);
+  return apiClient.get(API_ENDPOINTS.USERS_PROFILE_PUBLIC(id), options);
 }
 
 /**
@@ -100,7 +101,7 @@ export async function fetchUserProfile(
 export async function updateProfile(
   data: UpdateProfilePayload
 ): Promise<AxiosResponse<UserProfile>> {
-  return apiClient.put('/api/users/profile', data);
+  return apiClient.put(API_ENDPOINTS.USERS_UPDATE, data);
 }
 
 /**
@@ -122,7 +123,7 @@ export async function uploadAvatar(imageFile: File): Promise<AxiosResponse<{ ava
   const formData = new FormData();
   formData.append('image', imageFile);
   
-  return apiClient.post('/api/users/profile/avatar', formData, {
+  return apiClient.post(API_ENDPOINTS.USERS_AVATAR, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
 }
@@ -148,5 +149,5 @@ export async function uploadAvatar(imageFile: File): Promise<AxiosResponse<{ ava
 export async function changePassword(
   data: ChangePasswordPayload
 ): Promise<AxiosResponse> {
-  return apiClient.post('/api/users/profile/change-password', data);
+  return apiClient.post(API_ENDPOINTS.USERS_CHANGE_PASSWORD, data);
 }

@@ -31,12 +31,18 @@ export const API_ENDPOINTS = {
   AUTH_REGISTER: '/api/auth/register',
   AUTH_REFRESH: '/api/auth/refresh',
   AUTH_LOGOUT: '/api/auth/logout',
+  HEALTH: '/api/health',
 
   // User endpoints
   USERS_PROFILE: '/api/users/profile',
   USERS_ME: '/api/users/me',
   USERS_GET: (id: string | number) => `/api/users/${id}`,
   USERS_UPDATE: '/api/users/profile',
+  USERS_PROFILE_PUBLIC: (id: string | number) => `/api/users/profiles/${id}`,
+  USERS_AVATAR: '/api/users/profile/avatar',
+  USERS_CHANGE_PASSWORD: '/api/users/profile/change-password',
+  USERS_SEARCH: '/api/users/search',
+  USERS_LIST: '/api/users',
 
   // Ads endpoints
   ADS_LIST: '/api/ads',

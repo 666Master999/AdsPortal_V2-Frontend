@@ -9,6 +9,7 @@
 
 import { AxiosResponse } from 'axios';
 import { apiClient } from './apiClient';
+import { API_ENDPOINTS } from '@/config/apiConfig';
 import type { UserProfile } from '@/types';
 
 /**
@@ -37,7 +38,7 @@ export interface SearchUsersOptions {
  * ```
  */
 export async function fetchCurrentUser(): Promise<AxiosResponse<UserProfile>> {
-  return apiClient.get('/api/users/me');
+  return apiClient.get(API_ENDPOINTS.USERS_ME);
 }
 
 /**
@@ -55,7 +56,7 @@ export async function fetchCurrentUser(): Promise<AxiosResponse<UserProfile>> {
  * ```
  */
 export async function fetchUserById(id: string | number): Promise<AxiosResponse<UserProfile>> {
-  return apiClient.get(`/api/users/${id}`);
+  return apiClient.get(API_ENDPOINTS.USERS_GET(id));
 }
 
 /**
@@ -73,7 +74,7 @@ export async function fetchUserById(id: string | number): Promise<AxiosResponse<
 export async function searchUsers(
   options: SearchUsersOptions = {}
 ): Promise<AxiosResponse<UserProfile[]>> {
-  return apiClient.get('/api/users/search', { params: options });
+  return apiClient.get(API_ENDPOINTS.USERS_SEARCH, { params: options });
 }
 
 /**
@@ -87,5 +88,5 @@ export async function listUsers(
   page: number = 1,
   limit: number = 20
 ): Promise<AxiosResponse<UserProfile[]>> {
-  return apiClient.get('/api/users', { params: { page, limit } });
+  return apiClient.get(API_ENDPOINTS.USERS_LIST, { params: { page, limit } });
 }

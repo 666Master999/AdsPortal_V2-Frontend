@@ -1,14 +1,22 @@
 <template>
   <div class="row justify-content-center">
     <div class="col-md-8">
-      <div class="card shadow-sm">
+      <div v-if="error === 'Пользователь не найден'" class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-center py-4">
+            <div class="alert alert-warning mb-0">Пользователь не найден</div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="card shadow-sm">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start mb-3">
             <h4 class="card-title">{{ isOwnProfile ? 'Мой профиль' : 'Профиль пользователя' }}</h4>
             <router-link v-if="isOwnProfile" class="btn btn-sm btn-primary" :to="{ name: 'profileEdit' }">
               Редактировать
             </router-link>
-        </div>
+          </div>
 
           <div v-if="loading" class="text-center py-4">
             <div class="spinner-border text-primary" role="status"></div>
@@ -19,14 +27,15 @@
               <label class="form-label text-muted">Аватар</label>
               <div>
                 <img
-                  v-if="profile.avatarUrl"
-                  :src="profile.avatarUrl"
+                  v-if="avatarSrc"
+                  :src="avatarSrc"
                   :alt="profile.login"
                   class="rounded-circle"
                   style="width: 100px; height: 100px; object-fit: cover;"
                 />
-                <div v-else class="bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 100px; height: 100px;">
-                  <span class="text-muted">Нет аватара</span>
+                <div v-else class="bg-light rounded-circle d-flex align-items-center justify-content-center text-uppercase" style="width: 100px; height: 100px; font-size:36px; font-weight:600; color:#495057;">
+                  <span v-if="initialLetter">{{ initialLetter }}</span>
+                  <span v-else class="text-muted">—</span>
                 </div>
               </div>
             </div>
@@ -66,6 +75,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { formatDate } from '@/utils/format';
+import { API_BASE_URL } from '@/config/apiConfig';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchUserProfile } from '@/api/profileService';
 import { useAbortable } from '@/composables/useAbortable';
@@ -83,6 +93,19 @@ const profile = ref<UserProfile>({
   createdAt: null
 });
 const displayLogin = computed((): string => profile.value.login || '');
+
+const avatarSrc = computed((): string | null => {
+  const url = profile.value.avatarUrl || profile.value.avatar || null;
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const base = API_BASE_URL.replace(/\/$/, '');
+  return (url.startsWith('/') ? base + url : base + '/' + url);
+});
+
+const initialLetter = computed(() => {
+  const name = profile.value.login || '';
+  return name ? String(name).trim().charAt(0).toUpperCase() : '';
+});
 const { loading, error, run } = useAbortable('Не удалось загрузить профиль');
 
 const formattedDate = computed(() => formatDate(profile.value.createdAt));

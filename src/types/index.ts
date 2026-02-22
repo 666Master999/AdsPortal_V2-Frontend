@@ -84,19 +84,23 @@ export interface Advertisement {
   /** Заголовок */
   title: string;
   /** Описание */
-  description: string;
+  description?: string | null;
   /** Цена */
-  price: number;
+  price?: number | null;
   /** Категория */
   category?: string;
   /** Статус ('active' | 'sold' | 'archived') */
   status?: string;
-  /** ID автора */
-  authorId: number;
-  /** Автор объявления */
-  author?: UserProfile;
-  /** Изображения */
-  images?: string[];
+  /** Тип объявления: 0=Sell,1=Buy,2=Service */
+  type?: number;
+  /** Флаг договорной цены */
+  isNegotiable?: boolean;
+  /** ID владельца объявления */
+  ownerId?: number;
+  /** Логин владельца */
+  ownerUserName?: string;
+  /** Изображения (URL списка, как в API) */
+  imageUrls?: string[];
   /** Дата создания */
   createdAt: string;
   /** Дата обновления */

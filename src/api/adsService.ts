@@ -9,34 +9,37 @@
 
 import { AxiosResponse } from 'axios';
 import { apiClient } from './apiClient';
+import { API_ENDPOINTS } from '@/config/apiConfig';
 import type { Advertisement } from '@/types';
 
 /**
  * Payload для создания объявления
  */
 export interface CreateAdPayload {
-  /** Тип объявления: "Sell" или "Buy" */
-  type: 'Sell' | 'Buy';
+  /** Тип объявления: 0=Sell,1=Buy,2=Service */
+  type: number;
   /** Заголовок объявления */
   title: string;
   /** Описание объявления (опционально) */
   description?: string;
-  /** Цена */
-  price: number;
-  /** Изображение (опционально) */
-  image?: File;
+  /** Цена (nullable for negotiable) */
+  price?: number | null;
+  /** Признак "Договорная" */
+  isNegotiable?: boolean;
+  /** Изображения: up to 10 files, order matters (first = main) */
+  images?: File[];
 }
 
 /**
  * Параметры для фильтрации списка объявлений
  */
 export interface FetchAdsOptions {
-  /** Страница (для пагинации) */
+  /** Страница (для пагинации) — временно не используем */
   page?: number;
-  /** Количество объявлений на странице */
+  /** Количество объявлений на странице — временно не используем */
   limit?: number;
-  /** Тип объявления для фильтра */
-  type?: 'Sell' | 'Buy';
+  /** Тип объявления для фильтра: 0|1 or 'Sell'|'Buy' */
+  type?: number | 'Sell' | 'Buy' | string;
   /** Поле для сортировки */
   sortBy?: 'date' | 'price';
   /** Порядок сортировки */
@@ -64,21 +67,37 @@ export async function createAd(
   data: CreateAdPayload
 ): Promise<AxiosResponse<Advertisement>> {
   const formData = new FormData();
-  
-  formData.append('Type', data.type);
-  formData.append('Title', data.title);
-  
-  if (data.description) {
-    formData.append('Description', data.description);
+
+  // Normalize and append type as numeric string (backend expects 0|1|2)
+  let typeValue: number | null = null;
+  if (typeof data.type === 'number') typeValue = data.type;
+  else if (data.type === 'Sell') typeValue = 0;
+  else if (data.type === 'Buy') typeValue = 1;
+  else {
+    const n = Number(data.type);
+    if (!Number.isNaN(n)) typeValue = n;
   }
-  
-  formData.append('Price', String(data.price));
-  
-  if (data.image) {
-    formData.append('image', data.image);
+  if (typeValue !== null) formData.append('type', String(typeValue));
+  formData.append('title', data.title);
+
+  if (data.description) {
+    formData.append('description', data.description);
   }
 
-  return apiClient.post('/api/ads', formData, {
+  if (data.price !== undefined && data.price !== null) {
+    formData.append('price', String(data.price));
+  }
+
+  if (typeof data.isNegotiable === 'boolean') {
+    formData.append('isNegotiable', data.isNegotiable ? 'true' : 'false');
+  }
+
+  if (data.images && data.images.length) {
+    // limit to 10 — order matters, backend treats first as main
+    data.images.slice(0, 10).forEach((img) => formData.append('images', img));
+  }
+
+  return apiClient.post(API_ENDPOINTS.ADS_CREATE, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
 }
@@ -102,7 +121,28 @@ export async function createAd(
 export async function fetchAds(
   options: FetchAdsOptions = {}
 ): Promise<AxiosResponse<Advertisement[]>> {
-  return apiClient.get('/api/ads', { params: options });
+  // Some backend implementations reject requests containing `type` query
+  // (405). To be resilient, request the list without `type` and apply
+  // optional filtering on the client side.
+  // Send pagination params to server (server supports `page` and `limit`).
+  const params: any = {};
+  if (options.page !== undefined) params.page = options.page;
+  if (options.limit !== undefined) params.limit = options.limit;
+  if (options.sortBy) params.sortBy = options.sortBy;
+  if (options.order) params.order = options.order;
+
+  // Normalize type to numeric if provided
+  if (options.type !== undefined) {
+    if (options.type === 'Sell') params.type = 0;
+    else if (options.type === 'Buy') params.type = 1;
+    else {
+      const n = Number(options.type);
+      if (!Number.isNaN(n)) params.type = n;
+    }
+  }
+
+  const res = await apiClient.get(API_ENDPOINTS.ADS_LIST, { params });
+  return res;
 }
 
 /**
@@ -118,7 +158,7 @@ export async function fetchAds(
  * ```
  */
 export async function fetchAd(id: string | number): Promise<AxiosResponse<Advertisement>> {
-  return apiClient.get(`/api/ads/${id}`);
+  return apiClient.get(API_ENDPOINTS.ADS_GET(id));
 }
 
 /**
@@ -140,7 +180,7 @@ export async function fetchAd(id: string | number): Promise<AxiosResponse<Advert
  * ```
  */
 export async function deleteAd(id: string | number): Promise<AxiosResponse> {
-  return apiClient.delete(`/api/ads/${id}`);
+  return apiClient.delete(API_ENDPOINTS.ADS_DELETE(id));
 }
 
 /**
@@ -156,5 +196,5 @@ export async function updateAd(
   id: string | number,
   data: Partial<CreateAdPayload>
 ): Promise<AxiosResponse<Advertisement>> {
-  return apiClient.put(`/api/ads/${id}`, data);
+  return apiClient.put(API_ENDPOINTS.ADS_UPDATE(id), data);
 }

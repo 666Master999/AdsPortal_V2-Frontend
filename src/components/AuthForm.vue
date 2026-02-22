@@ -98,7 +98,7 @@
             <button
               class="btn btn-primary w-100"
               type="submit"
-              :disabled="loading || Object.keys(validationErrors).length > 0"
+              :disabled="loading"
             >
               <span v-if="loading" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
               <span>{{ loading ? loadingLabel : submitLabel }}</span>
@@ -112,14 +112,12 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import * as authApi from '@/api/authService';
 import { useAuthStore } from '@/stores/authStore';
 import { extractToken, getErrorMessage } from '@/utils/authUtils';
-import {
-  validateLogin,
-  validatePassword
-} from '@/utils/validators';
+import { validateLogin, validatePassword } from '@/utils/validators';
+import { useFormValidation } from '@/composables/useFormValidation';
 
 /**
  * Props для компонента
@@ -174,11 +172,22 @@ const error = ref('');
 /**
  * Ошибки валидации для каждого поля
  */
-const validationErrors = reactive<Record<string, string>>({});
+const { errors: validationErrors, validateField: validateFieldWithForm, validateAll } =
+  useFormValidation<typeof form>({
+    login: (f) => validateLogin(f.login),
+    password: (f) => validatePassword(f.password),
+    passwordConfirm: (f) => {
+      if (props.mode !== 'register') return { isValid: true };
+      return f.password === f.passwordConfirm
+        ? { isValid: true }
+        : { isValid: false, error: 'Пароли не совпадают' };
+    }
+  });
 
 // ===== Dependencies =====
 
 const router = useRouter();
+const route = useRoute();
 const auth = useAuthStore();
 
 // ===== Methods =====
@@ -188,68 +197,13 @@ const auth = useAuthStore();
  * @param field - Название поля для валидации
  */
 const validateField = (field: keyof typeof form): void => {
-  switch (field) {
-    case 'login': {
-      const result = validateLogin(form.login);
-      if (result.isValid) {
-        delete validationErrors.login;
-      } else {
-        validationErrors.login = result.error || '';
-      }
-      break;
-    }
-
-    case 'password': {
-      const result = validatePassword(form.password);
-      if (result.isValid) {
-        delete validationErrors.password;
-      } else {
-        validationErrors.password = result.error || '';
-      }
-      break;
-    }
-
-    case 'passwordConfirm': {
-      if (props.mode === 'register') {
-        if (form.password !== form.passwordConfirm) {
-          validationErrors.passwordConfirm = 'Пароли не совпадают';
-        } else {
-          delete validationErrors.passwordConfirm;
-        }
-      }
-      break;
-    }
-  }
+  validateFieldWithForm(form, field);
 };
 
 /**
  * Валидирует всю форму перед отправкой
  */
-const validateForm = (): boolean => {
-  validationErrors.login = '';
-  validationErrors.password = '';
-  if (props.mode === 'register') {
-    validationErrors.passwordConfirm = '';
-  }
-
-  const loginResult = validateLogin(form.login);
-  if (!loginResult.isValid) {
-    validationErrors.login = loginResult.error || '';
-  }
-
-  const passwordResult = validatePassword(form.password);
-  if (!passwordResult.isValid) {
-    validationErrors.password = passwordResult.error || '';
-  }
-
-  if (props.mode === 'register') {
-    if (form.password !== form.passwordConfirm) {
-      validationErrors.passwordConfirm = 'Пароли не совпадают';
-    }
-  }
-
-  return Object.keys(validationErrors).length === 0;
-};
+const validateForm = (): boolean => validateAll(form);
 
 /**
  * Отправляет форму на сервер
@@ -280,23 +234,9 @@ const submit = async (): Promise<void> => {
     // Сохраняем токен в store и localStorage
     auth.setToken(token);
 
-    // Перенаправляем пользователя
-    if (props.mode === 'login') {
-      // Для входа — идём на профиль пользователя
-      let userId: string | number | null = auth.userId;
-      if (!userId) {
-        userId = await auth.fetchUserId();
-      }
-
-      if (userId) {
-        router.replace({ name: 'userProfile', params: { id: String(userId) } });
-      } else {
-        router.replace({ name: 'home' });
-      }
-    } else {
-      // Для регистрации — на главную
-      router.replace({ name: 'home' });
-    }
+    // Перенаправляем пользователя на сохранённый маршрут или на главную
+    const redirectPath = typeof route.query.redirect === 'string' ? route.query.redirect : null;
+    router.replace(redirectPath || { name: 'home' });
   } catch (err) {
     const action = props.mode === 'login' ? 'входа' : 'регистрации';
     error.value = getErrorMessage(err, `Ошибка ${action}`);

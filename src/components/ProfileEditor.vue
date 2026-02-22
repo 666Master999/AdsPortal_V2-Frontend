@@ -79,70 +79,85 @@
   </div>
 
   <div class="card shadow-sm mt-4">
-    <div class="card-header bg-light">
-      <h5 class="mb-0">Смена пароля</h5>
+      <div class="card-header bg-light">
+        <h5 class="mb-0">Смена пароля</h5>
+      </div>
+      <div class="card-body">
+        <div v-if="passwordError" class="alert alert-danger" role="alert">
+          {{ passwordError }}
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Текущий пароль</label>
+          <input
+            v-model="passwordForm.current"
+            type="password"
+            class="form-control"
+            :class="{ 'is-invalid': passwordValidationErrors.current }"
+            :disabled="passwordLoading"
+            autocomplete="current-password"
+            @blur="validatePasswordField('current')"
+            @input="validatePasswordField('current')"
+          />
+          <small v-if="passwordValidationErrors.current" class="text-danger">{{ passwordValidationErrors.current }}</small>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Новый пароль</label>
+          <input
+            v-model="passwordForm.newPassword"
+            type="password"
+            class="form-control"
+            :class="{ 'is-invalid': passwordValidationErrors.newPassword }"
+            :disabled="passwordLoading"
+            autocomplete="new-password"
+            @blur="validatePasswordField('newPassword')"
+            @input="validatePasswordField('newPassword')"
+          />
+          <small v-if="passwordValidationErrors.newPassword" class="text-danger">{{ passwordValidationErrors.newPassword }}</small>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Подтверждение нового пароля</label>
+          <input
+            v-model="passwordForm.confirm"
+            type="password"
+            class="form-control"
+            :class="{ 'is-invalid': passwordValidationErrors.confirm }"
+            :disabled="passwordLoading"
+            autocomplete="new-password"
+            @blur="validatePasswordField('confirm')"
+            @input="validatePasswordField('confirm')"
+          />
+          <small v-if="passwordValidationErrors.confirm" class="text-danger">{{ passwordValidationErrors.confirm }}</small>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button
+            type="button"
+            class="btn btn-warning"
+            :disabled="passwordLoading"
+            @click="submitPassword"
+          >
+            <span v-if="passwordLoading" class="spinner-border spinner-border-sm me-2"></span>
+            Сменить пароль
+          </button>
+          <button type="button" class="btn btn-secondary" :disabled="passwordLoading" @click="resetPassword">
+            Отмена
+          </button>
+        </div>
+      </div>
     </div>
-    <div class="card-body">
-      <div v-if="passwordError" class="alert alert-danger" role="alert">
-        {{ passwordError }}
-      </div>
-
-      <div class="mb-3">
-        <label class="form-label">Текущий пароль</label>
-        <input
-          v-model="passwordForm.current"
-          type="password"
-          class="form-control"
-          :disabled="passwordLoading"
-          autocomplete="current-password"
-        />
-      </div>
-
-      <div class="mb-3">
-        <label class="form-label">Новый пароль</label>
-        <input
-          v-model="passwordForm.newPassword"
-          type="password"
-          class="form-control"
-          :disabled="passwordLoading"
-          autocomplete="new-password"
-        />
-      </div>
-
-      <div class="mb-3">
-        <label class="form-label">Подтверждение нового пароля</label>
-        <input
-          v-model="passwordForm.confirm"
-          type="password"
-          class="form-control"
-          :disabled="passwordLoading"
-          autocomplete="new-password"
-        />
-      </div>
-
-      <div class="d-flex gap-2">
-        <button
-          type="button"
-          class="btn btn-warning"
-          :disabled="passwordLoading"
-          @click="submitPassword"
-        >
-          <span v-if="passwordLoading" class="spinner-border spinner-border-sm me-2"></span>
-          Сменить пароль
-        </button>
-        <button type="button" class="btn btn-secondary" :disabled="passwordLoading" @click="resetPassword">
-          Отмена
-        </button>
-      </div>
-    </div>
-  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue';
 import { updateProfile, changePassword, uploadAvatar } from '@/api/profileService';
 import { getErrorMessage } from '@/utils/authUtils';
+import { validatePassword } from '@/utils/validators';
+import { useFormValidation } from '@/composables/useFormValidation';
 import type { UserProfile } from '@/types';
+import { watch } from 'vue';
 
 interface UpdateProfilePayload {
   email?: string;
@@ -176,6 +191,16 @@ const formData = reactive<FormData>({
   phone: props.profile.phone || ''
 });
 
+// keep form fields in sync when parent profile changes
+watch(
+  () => props.profile,
+  (p) => {
+    formData.email = p?.email || '';
+    formData.phone = p?.phone || '';
+  },
+  { immediate: true }
+);
+
 const passwordLoading = ref<boolean>(false);
 const passwordError = ref<string>('');
 
@@ -184,6 +209,27 @@ const passwordForm = reactive<PasswordForm>({
   newPassword: '',
   confirm: ''
 });
+
+const passwordValidators = {
+  current: (f: PasswordForm) => ({ isValid: !!f.current, error: 'Введите текущий пароль' }),
+  newPassword: (f: PasswordForm) => validatePassword(f.newPassword),
+  confirm: (f: PasswordForm) =>
+    f.newPassword === f.confirm
+      ? { isValid: true }
+      : { isValid: false, error: 'Пароли не совпадают' }
+};
+
+const {
+  errors: passwordValidationErrors,
+  validateField: validatePasswordFieldWithForm,
+  validateAll: validateAllPassword
+} = useFormValidation<PasswordForm>(passwordValidators);
+
+const validatePasswordField = (field: keyof PasswordForm) => {
+  validatePasswordFieldWithForm(passwordForm, field);
+};
+
+// profile fields use simple submit-time check (no per-field validation)
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const selectedFile = ref<File | null>(null);
@@ -194,18 +240,17 @@ async function submitProfile(): Promise<void> {
   error.value = '';
   const { email, phone } = formData;
 
-  if (!email && !phone) {
-    error.value = 'Заполните хотя бы одно поле.';
-    return;
-  }
-
   loading.value = true;
   try {
-    const data: UpdateProfilePayload = {};
-    if (email) data.email = email;
-    if (phone) data.phone = phone;
+    const data: UpdateProfilePayload = {
+      email: email ?? '',
+      phone: phone ?? ''
+    };
     const res = await updateProfile(data);
     emit('updated', res.data);
+    // keep local form in sync with backend response
+    formData.email = res.data.email || '';
+    formData.phone = res.data.phone || '';
   } catch (err) {
     error.value = getErrorMessage(err, 'Не удалось сохранить профиль');
   } finally {
@@ -222,18 +267,9 @@ function resetForm(): void {
 async function submitPassword(): Promise<void> {
   passwordError.value = '';
 
-  if (!passwordForm.current || !passwordForm.newPassword || !passwordForm.confirm) {
-    passwordError.value = 'Заполните все поля.';
-    return;
-  }
-
-  if (passwordForm.newPassword !== passwordForm.confirm) {
-    passwordError.value = 'Новые пароли не совпадают.';
-    return;
-  }
-
-  if (passwordForm.newPassword.length < 3) {
-    passwordError.value = 'Новый пароль должен быть не менее 3 символов.';
+  const valid = validateAllPassword(passwordForm);
+  if (!valid) {
+    passwordError.value = Object.values(passwordValidationErrors)[0] || 'Исправьте ошибки формы.';
     return;
   }
 
@@ -258,6 +294,7 @@ function resetPassword(): void {
   passwordForm.newPassword = '';
   passwordForm.confirm = '';
   passwordError.value = '';
+  Object.keys(passwordValidationErrors).forEach((key) => delete passwordValidationErrors[key]);
 }
 
 function onFileSelected(event: Event): void {

@@ -16,6 +16,9 @@ const Register = () => import('@/pages/Register.vue');
 const Profile = () => import('@/pages/Profile.vue');
 const UserProfile = () => import('@/pages/UserProfile.vue');
 const CreateAd = () => import('@/pages/CreateAd.vue');
+const NotFound = () => import('@/pages/NotFound.vue');
+const AdsShowcase = () => import('@/pages/AdsShowcase.vue');
+const AdDetails = () => import('@/pages/AdDetails.vue');
 
 /**
  * Расширенные метаданные маршрута
@@ -102,6 +105,29 @@ const routes: Array<RouteRecordRaw> = [
       title: 'Создание объявления'
     }
   }
+  ,
+  {
+    path: '/ads',
+    name: 'adsShowcase',
+    component: AdsShowcase,
+    meta: { title: 'Витрина объявлений' }
+  }
+  ,
+  {
+    path: '/ads/:id',
+    name: 'adDetails',
+    component: AdDetails,
+    props: true,
+    meta: { title: 'Детали объявления' }
+  }
+  ,
+  {
+    // Catch-all 404 route
+    path: '/:pathMatch(.*)*',
+    name: 'notFound',
+    component: NotFound,
+    meta: { title: '404' }
+  }
 ];
 
 /**
@@ -141,7 +167,7 @@ router.beforeEach(async (to, _from, next) => {
 
   // Проверка: маршрут требует авторизации, а пользователь не авторизован
   if (requiresAuth && !auth.isAuthenticated) {
-    return next({ name: 'login' });
+    return next({ name: 'login', query: { redirect: to.fullPath } });
   }
 
   // Проверка: маршрут только для гостей, а пользователь авторизован

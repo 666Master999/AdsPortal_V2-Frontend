@@ -1,7 +1,8 @@
 <!-- src/views/HomeView.vue -->
 <template>
-  <div class="d-flex gap-4 align-items-center">
-    <div class="d-flex align-items-center">
+  <div class="home-view">
+    <div class="d-flex gap-4 align-items-center">
+      <div class="d-flex align-items-center">
       <div
         class="status-circle me-1"
         :class="{'bg-success': isBackendConnected, 'bg-danger': !isBackendConnected}"
@@ -26,6 +27,11 @@
         <span v-else>{{ isDbConnected ? 'online' : 'offline' }}</span>
       </small>
     </div>
+    </div>
+
+    <div class="mt-4">
+      <AdsShowcase />
+    </div>
   </div>
 </template>
 
@@ -33,7 +39,9 @@
 import { ref, onMounted } from 'vue';
 import { useAuthStore } from '@/stores/authStore';
 import { apiClient } from '@/api/apiClient';
+import { API_ENDPOINTS } from '@/config/apiConfig';
 import { useAbortable } from '@/composables/useAbortable';
+import AdsShowcase from '@/pages/AdsShowcase.vue';
 
 const auth = useAuthStore();
 
@@ -51,7 +59,7 @@ const { run } = useAbortable('Health check failed');
 
 async function fetchHealth(): Promise<void> {
   try {
-    const res = await run((signal: AbortSignal) => apiClient.get<HealthResponse>('/api/health', { signal }));
+    const res = await run((signal: AbortSignal) => apiClient.get<HealthResponse>(API_ENDPOINTS.HEALTH, { signal }));
     if (res) {
       isBackendConnected.value = !!res.data.backend;
       isDbConnected.value = !!res.data.db;

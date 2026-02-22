@@ -27,13 +27,15 @@
                 <label for="type" class="form-label">Тип объявления <span class="text-danger">*</span></label>
                 <select
                   id="type"
-                  v-model="form.type"
+                  v-model.number="form.type"
                   class="form-select"
                   :disabled="submitting"
+                  @change="validateField('type')"
                 >
-                  <option value="">Выберите тип</option>
-                  <option value="Sell">Продаю</option>
-                  <option value="Buy">Ищу</option>
+                  <option :value="null">Выберите тип</option>
+                  <option :value="0">Продам</option>
+                  <option :value="1">Куплю</option>
+                  <option :value="2">Услуги</option>
                 </select>
               </div>
 
@@ -48,6 +50,7 @@
                   placeholder="Например: iPhone 13, Диван, etc."
                   :disabled="submitting"
                   @blur="validateField('title')"
+                  @input="validateField('title')"
                   :class="{ 'is-invalid': validationErrors.title }"
                 />
                 <small v-if="validationErrors.title" class="text-danger">
@@ -57,7 +60,7 @@
 
               <!-- Описание -->
               <div class="mb-3">
-                <label for="description" class="form-label">Описание <span class="text-danger">*</span></label>
+                <label for="description" class="form-label">Описание</label>
                 <textarea
                   id="description"
                   v-model="form.description"
@@ -66,6 +69,7 @@
                   placeholder="Подробное описание товара..."
                   :disabled="submitting"
                   @blur="validateField('description')"
+                  @input="validateField('description')"
                   :class="{ 'is-invalid': validationErrors.description }"
                 ></textarea>
                 <small v-if="validationErrors.description" class="text-danger">
@@ -78,46 +82,76 @@
 
               <!-- Цена -->
               <div class="mb-3">
-                <label for="price" class="form-label">Цена (₽) <span class="text-danger">*</span></label>
-                <input
-                  id="price"
-                  v-model.number="form.price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  class="form-control"
-                  placeholder="0"
-                  :disabled="submitting"
-                  @blur="validateField('price')"
-                  :class="{ 'is-invalid': validationErrors.price }"
-                />
+                <label for="price" class="form-label">Цена (₽)</label>
+                <div class="d-flex gap-2 align-items-center">
+                  <input
+                    id="price"
+                    v-model.number="form.price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="form-control"
+                    placeholder="0"
+                    :disabled="submitting || form.negotiable"
+                    @blur="validateField('price')"
+                    @input="validateField('price')"
+                    :class="{ 'is-invalid': validationErrors.price }"
+                    style="max-width: 200px;"
+                  />
+                  <div class="form-check ms-2">
+                      <input class="form-check-input" type="checkbox" id="negotiable" v-model="form.negotiable" :disabled="submitting" @change="validateField('price')" />
+                    <label class="form-check-label" for="negotiable">Договорная</label>
+                  </div>
+                </div>
                 <small v-if="validationErrors.price" class="text-danger">
                   {{ validationErrors.price }}
                 </small>
+                <small class="form-text text-muted">0 отображается как «Бесплатно / Договорная».</small>
               </div>
 
-              <!-- Изображение -->
+
+              <!-- Изображения -->
               <div class="mb-3">
-                <label for="image" class="form-label">Изображение (опционально)</label>
-                <input
-                  id="image"
-                  ref="fileInput"
-                  type="file"
-                  accept="image/*"
-                  class="form-control"
-                  @change="onFileChange"
-                  :disabled="submitting"
-                />
-                <small class="form-text text-muted">
-                  Форматы: JPG, PNG, WebP. Максимум 10 МБ
-                </small>
-                <img
-                  v-if="preview"
-                  :src="preview"
-                  :alt="form.title"
-                  class="img-thumbnail mt-2"
-                  style="max-width: 200px; max-height: 200px;"
-                />
+                <label class="form-label">Изображения (до 10 файлов, опционально)</label>
+                <div class="border rounded p-3 bg-light position-relative mb-2"
+                  @dragover.prevent="onDragOverZone"
+                  @dragleave.prevent="onDragLeaveZone"
+                  @drop.prevent="onDropZone"
+                  :class="{ 'border-primary': isDragOver }">
+                  <input
+                    id="images"
+                    ref="fileInput"
+                    type="file"
+                    accept="image/*"
+                    class="d-none"
+                    @change="onFilesChange"
+                    multiple
+                    :disabled="submitting"
+                  />
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <button type="button" class="btn btn-sm btn-primary" @click.prevent="triggerFileInput" :disabled="submitting">Загрузить изображения</button> 
+                    <span class="text-muted">или перетащите сюда · Макс 10 файлов · JPG/PNG/WebP · 10 МБ/файл</span>
+                    <button v-if="previews.length" type="button" class="btn btn-sm btn-outline-danger ms-auto" @click="clearFiles" :disabled="submitting">Очистить</button>
+                  </div>
+                  <div v-if="previews.length" class="row g-2 mt-2">
+                    <div v-for="(p, idx) in previews" :key="p.id" class="col-auto">
+                      <div
+                        class="position-relative border rounded bg-white"
+                        style="width:120px;height:90px;overflow:hidden;"
+                        draggable="true"
+                        @dragstart="handleDragStart($event, idx)"
+                        @dragover.prevent
+                        @drop.stop.prevent="handleDrop($event, idx)"
+                      >
+                        <img :src="p.url" alt="preview" class="w-100 h-100 object-fit-cover rounded" />
+                        <button type="button" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-1" @click="removeFile(idx)">✕</button>
+                        <button type="button" class="btn btn-sm btn-warning position-absolute bottom-0 end-0 m-1" @click="setMain(idx)" :aria-pressed="mainIndex===idx" :class="{ 'active': mainIndex===idx }" title="Сделать главным">★</button>
+                        <span v-if="mainIndex===idx" class="badge bg-primary position-absolute top-0 start-0 m-1">Главное</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="validationErrors.image" class="text-danger mt-2">{{ validationErrors.image }}</div>
               </div>
 
               <!-- Кнопки -->
@@ -125,7 +159,7 @@
                 <button
                   type="submit"
                   class="btn btn-primary"
-                  :disabled="submitting || Object.keys(validationErrors).length > 0"
+                  :disabled="submitting"
                 >
                   <span v-if="!submitting">Создать объявление</span>
                   <span v-else>
@@ -144,7 +178,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
+import { reactive, ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { createAd } from '@/api/adsService';
@@ -154,162 +188,124 @@ import {
   validateDescription,
   validatePrice
 } from '@/utils/validators';
+import { useImageManager } from '@/composables/useImageManager';
+import { useFormValidation } from '@/composables/useFormValidation';
 
 const router = useRouter();
 
-/** Данные формы */
+// form state with simple validation map
 const form = reactive({
-  type: '',
+  type: null as number | null,
   title: '',
   description: '',
-  price: null as number | null
+  price: null as number | null,
+  negotiable: false
 });
 
-/** Выбранный файл изображения */
-const file = ref<File | null>(null);
+const validators = {
+  type: (f: typeof form) => ({ isValid: f.type !== null, error: 'Тип обязателен' }),
+  title: (f: typeof form) => validateAdTitle(f.title),
+  description: (f: typeof form) => validateDescription(f.description),
+  price: (f: typeof form) => validatePrice(f.price ?? undefined, !!f.negotiable),
+  negotiable: () => ({ isValid: true })
+};
 
-/** Preview изображения */
-const preview = ref('');
-
-/** Состояние отправки */
+const { errors: validationErrors, isValid, validateField: validateFieldWithForm } =
+  useFormValidation<typeof form>(validators);
+const error = ref('');
 const submitting = ref(false);
 
-/** Сообщение об ошибке */
-const error = ref('');
+// image manager handles files, previews, main index, reordering, etc.
+const {
+  files: imgFiles,
+  previews,
+  mainIndex,
+  add: addFiles,
+  clear: clearFiles,
+  remove: removeFile,
+  setMain,
+  reorder
+} = useImageManager();
 
-/** Ошибки валидации */
-const validationErrors = reactive<Record<string, string>>({});
+const fileInput = ref<HTMLInputElement | null>(null);
+const isDragOver = ref(false);
 
-/**
- * Валидирует отдельное поле
- */
-const validateField = (field: keyof typeof form): void => {
-  switch (field) {
-    case 'title': {
-      const result = validateAdTitle(form.title);
-      if (result.isValid) {
-        delete validationErrors.title;
-      } else {
-        validationErrors.title = result.error || '';
-      }
-      break;
-    }
+const formIsValid = computed(() => isValid.value && !!form.type);
 
-    case 'description': {
-      const result = validateDescription(form.description);
-      if (result.isValid) {
-        delete validationErrors.description;
-      } else {
-        validationErrors.description = result.error || '';
-      }
-      break;
-    }
+function validateField(field: keyof typeof form) {
+  validateFieldWithForm(form, field);
+}
 
-    case 'price': {
-      const result = validatePrice(form.price ?? 0);
-      if (result.isValid) {
-        delete validationErrors.price;
-      } else {
-        validationErrors.price = result.error || '';
-      }
-      break;
-    }
-  }
-};
+function normalizeFiles(fileList: FileList | null | undefined) {
+  if (!fileList?.length) return [];
+  return Array.from(fileList);
+}
 
-/**
- * Обработчик выбора файла
- */
-const onFileChange = (e: Event): void => {
-  const target = e.target as HTMLInputElement;
-  const selectedFile = target.files?.[0];
+function onFilesChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const files = normalizeFiles(input.files);
+  if (files.length) addFiles(files);
+  if (imgFiles.value.length === 0) delete validationErrors.image;
+}
 
-  if (!selectedFile) {
-    file.value = null;
-    preview.value = '';
-    return;
-  }
+function triggerFileInput() {
+  fileInput.value?.click();
+}
 
-  // Проверка размера (10 МБ)
-  const MAX_SIZE = 10 * 1024 * 1024;
-  if (selectedFile.size > MAX_SIZE) {
-    validationErrors.image = 'Файл слишком большой (максимум 10 МБ)';
-    file.value = null;
-    preview.value = '';
-    return;
-  }
+function handleDragStart(e: DragEvent, idx: number) {
+  try { e.dataTransfer?.setData('drag-idx', String(idx)); } catch {}
+}
 
-  // Проверка формата
-  if (!selectedFile.type.startsWith('image/')) {
-    validationErrors.image = 'Выберите изображение';
-    file.value = null;
-    preview.value = '';
-    return;
-  }
+function handleDrop(e: DragEvent, dest: number) {
+  e.preventDefault();
+  const srcStr = e.dataTransfer?.getData('drag-idx');
+  const src = srcStr !== undefined ? Number(srcStr) : null;
+  if (src !== null && src !== dest) reorder(src, dest);
+}
 
-  file.value = selectedFile;
-  preview.value = URL.createObjectURL(selectedFile);
-  delete validationErrors.image;
-};
+function onDragOverZone() { isDragOver.value = true; }
+function onDragLeaveZone() { isDragOver.value = false; }
+function onDropZone(e: DragEvent) {
+  onDragLeaveZone();
+  const dt = e.dataTransfer;
+  if (!dt?.files?.length) return;
+  addFiles(normalizeFiles(dt.files));
+  if (imgFiles.value.length === 0) delete validationErrors.image;
+}
 
-/**
- * Отправляет форму на сервер
- */
-const onSubmit = async (): Promise<void> => {
-  error.value = '';
-
-  // Валидируем все поля
-  validateField('type');
-  validateField('title');
-  validateField('description');
-  validateField('price');
-
-  if (!form.type) {
-    validationErrors.type = 'Выберите тип объявления';
-  }
-
-  // Если есть ошибки валидации — не отправляем
-  if (Object.keys(validationErrors).length > 0) {
-    return;
-  }
+async function onSubmit() {
+  Object.keys(validators).forEach(k => validateField(k as keyof typeof form));
+  if (!formIsValid.value) return;
 
   submitting.value = true;
+  error.value = '';
 
   try {
-    await createAd({
-      type: form.type as 'Sell' | 'Buy',
+    const payload: any = {
+      type: Number(form.type),
       title: form.title,
       description: form.description || undefined,
-      price: form.price || 0,
-      image: file.value || undefined
-    });
+      isNegotiable: !!form.negotiable
+    };
 
-    // Перенаправляем на главную с success уведомлением
-    await router.replace({
-      name: 'home',
-      query: { success: 'ad_created' }
-    });
-  } catch (err) {
-    error.value = getErrorMessage(err, 'Ошибка при создании объявления');
+    if (!form.negotiable) payload.price = form.price ?? 0;
+    if (imgFiles.value.length) {
+      // ensure main first
+      const ordered = [...imgFiles.value];
+      if (mainIndex.value > 0 && mainIndex.value < ordered.length) {
+        ordered.unshift(ordered.splice(mainIndex.value, 1)[0]);
+      }
+      payload.images = ordered;
+    }
+
+    await createAd(payload);
+    await router.replace({ name: 'home', query: { success: 'ad_created' } });
+  } catch (e) {
+    error.value = getErrorMessage(e, 'Ошибка при создании объявления');
   } finally {
     submitting.value = false;
   }
-};
+}
 </script>
 
-<style scoped>
-.form-control.is-invalid,
-.form-select.is-invalid {
-  border-color: #dc3545;
-}
-
-.text-danger {
-  color: #dc3545;
-}
-
-.spinner-border-sm {
-  width: 1rem;
-  height: 1rem;
-  border-width: 0.2em;
-}
-</style>
+<!-- No custom styles: using Bootstrap only -->

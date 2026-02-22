@@ -133,9 +133,15 @@ export function validateEmail(email: string | undefined | null): ValidationResul
  * @param price - Цена для проверки
  * @returns Объект результата валидации
  */
-export function validatePrice(price: number | string | undefined): ValidationResult {
+export function validatePrice(price: number | string | undefined, allowEmpty = false): ValidationResult {
+  // Price must be a number between 0 and 99999999999999.
+  // If allowEmpty is true, undefined/null/'' are accepted (e.g., when 'Договорная' is selected).
+  if ((price === undefined || price === null || price === '') && allowEmpty) {
+    return { isValid: true };
+  }
+
   if (price === undefined || price === null || price === '') {
-    return { isValid: false, error: 'Цена обязательна' };
+    return { isValid: false, error: 'Цена обязана быть указана' };
   }
 
   const numPrice = typeof price === 'string' ? parseFloat(price) : price;
@@ -148,8 +154,9 @@ export function validatePrice(price: number | string | undefined): ValidationRes
     return { isValid: false, error: 'Цена не может быть отрицательной' };
   }
 
-  if (numPrice > 999999999) {
-    return { isValid: false, error: 'Цена слишком велика' };
+  const MAX = 99999999999999; // per guide
+  if (numPrice > MAX) {
+    return { isValid: false, error: `Цена должна быть не более ${MAX}` };
   }
 
   return { isValid: true };
@@ -167,12 +174,12 @@ export function validateAdTitle(title: string | undefined | null): ValidationRes
 
   const trimmed = title.trim();
 
-  if (trimmed.length < 5) {
-    return { isValid: false, error: 'Заголовок должен содержать минимум 5 символов' };
+  if (trimmed.length < 3) {
+    return { isValid: false, error: 'Заголовок должен содержать минимум 3 символа' };
   }
 
-  if (trimmed.length > 100) {
-    return { isValid: false, error: 'Заголовок не должен содержать более 100 символов' };
+  if (trimmed.length > 20) {
+    return { isValid: false, error: 'Заголовок не должен содержать более 20 символов' };
   }
 
   return { isValid: true };
@@ -184,15 +191,15 @@ export function validateAdTitle(title: string | undefined | null): ValidationRes
  * @returns Объект результата валидации
  */
 export function validateDescription(description: string | undefined | null): ValidationResult {
+
+  // Description is optional. If provided, enforce length limits.
   if (!description || typeof description !== 'string') {
-    return { isValid: false, error: 'Описание обязательно' };
+    return { isValid: true };
   }
 
   const trimmed = description.trim();
 
-  if (trimmed.length < 10) {
-    return { isValid: false, error: 'Описание должно содержать минимум 10 символов' };
-  }
+  if (trimmed.length === 0) return { isValid: true };
 
   if (trimmed.length > 3000) {
     return { isValid: false, error: 'Описание не должно содержать более 3000 символов' };
