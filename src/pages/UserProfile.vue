@@ -63,20 +63,26 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { formatDate } from '@/utils/format';
-import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchUserProfile } from '@/api/profileService';
 import { useAbortable } from '@/composables/useAbortable';
+import type { UserProfile } from '@/types';
 
-const props = defineProps({ id: { type: String, required: true } });
-const router = useRouter();
+const props = defineProps<{ id: string }>()
 const auth = useAuthStore();
 
-const profile = ref({});
-const displayLogin = computed(() => profile.value.login || '');
+const profile = ref<UserProfile>({
+  id: 0,
+  login: '',
+  email: null,
+  phone: null,
+  avatarUrl: null,
+  createdAt: null
+});
+const displayLogin = computed((): string => profile.value.login || '');
 const { loading, error, run } = useAbortable('Не удалось загрузить профиль');
 
 const formattedDate = computed(() => formatDate(profile.value.createdAt));
@@ -88,20 +94,15 @@ const isOwnProfile = computed(() => {
 
 async function loadProfile() {
   try {
-    const res = await run(signal => fetchUserProfile(props.id, { signal }));
+    const res = await run((signal: AbortSignal) => fetchUserProfile(props.id, { signal }));
     if (res) profile.value = res.data;
-  } catch (err) {
+  } catch (err: any) {
     if (err?.response?.status === 404) {
       error.value = 'Пользователь не найден';
       return;
     }
     // 401 will be handled globally; other errors already stored in error
   }
-}
-
-function onLogout() {
-  auth.logout();
-  router.replace({ name: 'home' });
 }
 
 onMounted(async () => {
@@ -113,7 +114,6 @@ onMounted(async () => {
     await loadProfile();
   }
 });
-
 
 // если id меняется (переход между профилями) — перезагрузим
 watch(() => props.id, () => loadProfile());

@@ -28,7 +28,7 @@
   </nav>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
@@ -37,44 +37,67 @@ import { getErrorMessage } from '@/utils/authUtils';
 const router = useRouter();
 const auth = useAuthStore();
 
+/** Состояние загрузки при переходе на профиль */
 const loading = ref(false);
-const isAuthenticated = computed(() => !!auth.isAuthenticated);
+
+/** Проверка авторизации */
+const isAuthenticated = computed(() => auth.isAuthenticated);
+
+/** Логин текущего пользователя */
 const login = computed(() => auth.userLogin);
 
-// helper returns store getter value directly
-function getPublicId() {
-  return auth.userId;
-}
-
-async function goToMyProfile() {
-  let id = auth.userId;
-  if (!id) {
+/**
+ * Переходит на профиль текущего пользователя
+ * Если ID не известен, сначала запрашивает его с сервера
+ */
+const goToMyProfile = async (): Promise<void> => {
+  let id: string | null = null;
+  
+  if (auth.userId) {
+    id = auth.userId;
+  } else {
     loading.value = true;
     try {
-      id = await auth.fetchUserId();
+      const userId = await auth.fetchUserId();
+      if (userId) {
+        id = String(userId);
+      }
     } catch (e) {
-      console.warn('fetchUserId failed', getErrorMessage(e));
+      console.warn('Ошибка при получении ID пользователя:', getErrorMessage(e));
     } finally {
       loading.value = false;
     }
   }
 
   if (id) {
-    return router.push({ name: 'userProfile', params: { id } });
+    await router.push({ name: 'userProfile', params: { id } });
+  } else {
+    await router.push({ name: 'home' });
   }
-  router.push({ name: 'home' });
-}
+};
 
-async function onLogout() {
-  if (typeof auth.logout === 'function') {
-    try { await auth.logout(); } catch (e) { console.warn('Logout failed', e); }
+/**
+ * Выполняет логаут и перенаправляет на главную страницу
+ */
+const onLogout = async (): Promise<void> => {
+  try {
+    auth.logout();
+  } catch (e) {
+    console.warn('Ошибка при логауте:', getErrorMessage(e));
   }
-  router.replace({ name: 'home' });
-}
+  await router.replace({ name: 'home' });
+};
 
+/**
+ * При загрузке компонента инициализирует состояние аутентификации
+ */
 onMounted(async () => {
-  if (!auth.initialized && typeof auth.init === 'function') {
-    try { await auth.init(); } catch (e) { console.warn('Auth init failed', e); }
+  if (!auth.initialized) {
+    try {
+      await auth.init();
+    } catch (e) {
+      console.warn('Ошибка инициализации аутентификации:', getErrorMessage(e));
+    }
   }
 });
 </script>

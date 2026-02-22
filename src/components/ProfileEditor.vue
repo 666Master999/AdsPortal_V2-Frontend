@@ -138,40 +138,59 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive } from 'vue';
 import { updateProfile, changePassword, uploadAvatar } from '@/api/profileService';
 import { getErrorMessage } from '@/utils/authUtils';
+import type { UserProfile } from '@/types';
 
-const props = defineProps({
-  profile: { type: Object, required: true }
-});
+interface UpdateProfilePayload {
+  email?: string;
+  phone?: string;
+}
 
-const emit = defineEmits(['updated']);
+interface FormData {
+  email: string | null;
+  phone: string | null;
+}
 
-const loading = ref(false);
-const error = ref('');
+interface PasswordForm {
+  current: string;
+  newPassword: string;
+  confirm: string;
+}
 
-const formData = reactive({
+const props = defineProps<{
+  profile: UserProfile
+}>()
+
+const emit = defineEmits<{
+  updated: [payload: Partial<UserProfile>]
+}>()
+
+const loading = ref<boolean>(false);
+const error = ref<string>('');
+
+const formData = reactive<FormData>({
   email: props.profile.email || '',
   phone: props.profile.phone || ''
 });
 
-const passwordLoading = ref(false);
-const passwordError = ref('');
+const passwordLoading = ref<boolean>(false);
+const passwordError = ref<string>('');
 
-const passwordForm = reactive({
+const passwordForm = reactive<PasswordForm>({
   current: '',
   newPassword: '',
   confirm: ''
 });
 
-const fileInput = ref(null);
-const selectedFile = ref(null);
-const avatarLoading = ref(false);
-const avatarError = ref('');
+const fileInput = ref<HTMLInputElement | null>(null);
+const selectedFile = ref<File | null>(null);
+const avatarLoading = ref<boolean>(false);
+const avatarError = ref<string>('');
 
-async function submitProfile() {
+async function submitProfile(): Promise<void> {
   error.value = '';
   const { email, phone } = formData;
 
@@ -182,7 +201,7 @@ async function submitProfile() {
 
   loading.value = true;
   try {
-    const data = {};
+    const data: UpdateProfilePayload = {};
     if (email) data.email = email;
     if (phone) data.phone = phone;
     const res = await updateProfile(data);
@@ -194,13 +213,13 @@ async function submitProfile() {
   }
 }
 
-function resetForm() {
+function resetForm(): void {
   formData.email = props.profile.email || '';
   formData.phone = props.profile.phone || '';
   error.value = '';
 }
 
-async function submitPassword() {
+async function submitPassword(): Promise<void> {
   passwordError.value = '';
 
   if (!passwordForm.current || !passwordForm.newPassword || !passwordForm.confirm) {
@@ -234,15 +253,16 @@ async function submitPassword() {
   }
 }
 
-function resetPassword() {
+function resetPassword(): void {
   passwordForm.current = '';
   passwordForm.newPassword = '';
   passwordForm.confirm = '';
   passwordError.value = '';
 }
 
-function onFileSelected(event) {
-  const file = event.target.files?.[0];
+function onFileSelected(event: Event): void {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
   if (!file) {
     selectedFile.value = null;
     return;
@@ -251,21 +271,21 @@ function onFileSelected(event) {
   if (!file.type.startsWith('image/')) {
     avatarError.value = 'Выберите изображение.';
     selectedFile.value = null;
-    fileInput.value.value = '';
+    if (fileInput.value) fileInput.value.value = '';
     return;
   }
   // Validate file size (max 5MB)
   if (file.size > 5 * 1024 * 1024) {
     avatarError.value = 'Файл должен быть не более 5 МБ.';
     selectedFile.value = null;
-    fileInput.value.value = '';
+    if (fileInput.value) fileInput.value.value = '';
     return;
   }
   selectedFile.value = file;
   avatarError.value = '';
 }
 
-async function submitAvatar() {
+async function submitAvatar(): Promise<void> {
   if (!selectedFile.value) {
     avatarError.value = 'Выберите файл.';
     return;

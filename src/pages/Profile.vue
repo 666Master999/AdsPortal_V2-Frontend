@@ -65,7 +65,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { formatDate } from '@/utils/format';
 import { useRouter } from 'vue-router';
@@ -73,12 +73,13 @@ import { useAuthStore } from '@/stores/authStore';
 import { fetchMyProfile } from '@/api/profileService';
 import { useAbortable } from '@/composables/useAbortable';
 import ProfileEditor from '@/components/ProfileEditor.vue';
+import type { UserProfile } from '@/types';
 
 const auth = useAuthStore();
 const router = useRouter();
 
-const profile = ref({
-  id: null,
+const profile = ref<UserProfile>({
+  id: 0,
   login: '',
   email: null,
   phone: null,
@@ -102,7 +103,7 @@ async function loadProfile() {
   }
 }
 
-function onProfileUpdated(updatedProfile) {
+function onProfileUpdated(updatedProfile: Partial<UserProfile>): void {
   // Update local profile with returned data
   Object.assign(profile.value, updatedProfile);
   error.value = '';

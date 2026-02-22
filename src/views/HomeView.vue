@@ -29,24 +29,29 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useAuthStore } from '@/stores/authStore'; // убедитесь, что файл существует
-import { apiClient } from '@/api/apiClient'; // опционально: использовать общий клиент
+import { useAuthStore } from '@/stores/authStore';
+import { apiClient } from '@/api/apiClient';
 import { useAbortable } from '@/composables/useAbortable';
 
 const auth = useAuthStore();
 
-const isBackendConnected = ref(false);
-const isDbConnected = ref(false);
-const backendTooltip = ref('');
-const dbTooltip = ref('');
+const isBackendConnected = ref<boolean>(false);
+const isDbConnected = ref<boolean>(false);
+const backendTooltip = ref<string>('');
+const dbTooltip = ref<string>('');
+
+interface HealthResponse {
+  backend: boolean;
+  db: boolean;
+}
 
 const { run } = useAbortable('Health check failed');
 
-async function fetchHealth() {
+async function fetchHealth(): Promise<void> {
   try {
-    const res = await run(signal => apiClient.get('/api/health', { signal }));
+    const res = await run((signal: AbortSignal) => apiClient.get<HealthResponse>('/api/health', { signal }));
     if (res) {
       isBackendConnected.value = !!res.data.backend;
       isDbConnected.value = !!res.data.db;
@@ -68,8 +73,8 @@ onMounted(async () => {
     if (!auth.initialized) {
       if (typeof auth.init === 'function') {
         await auth.init();
-      } else if (typeof auth.initAuth === 'function') {
-        await auth.initAuth();
+      } else if (typeof (auth as any).initAuth === 'function') {
+        await (auth as any).initAuth();
       }
     }
   } catch (err) {
