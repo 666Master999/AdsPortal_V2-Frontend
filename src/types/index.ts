@@ -2,6 +2,10 @@
  * @file Global type definitions for the AdsPortal V2 frontend
  */
 
+// Re-export ad-specific types for convenience
+export { AdType, AD_TYPE_LABELS } from '@/types/ad';
+export type { AdImage, AdFormData, AdSubmitPayload } from '@/types/ad';
+
 /**
  * Пользователь (по результатам аутентификации)
  */
@@ -20,6 +24,11 @@ export interface AuthPayload {
   userId?: number | string;
   /** Subject (из JWT) */
   sub?: string;
+
+  /** Роли пользователя (например, ['Admin']) */
+  roles?: string[];
+  /** Флаг блокировки */
+  isBlocked?: boolean;
 }
 
 /**
@@ -32,6 +41,10 @@ export interface AuthState {
   login: string | null;
   /** Публичный ID пользователя */
   publicId: number | null;
+  /** Роли (например ['Admin']) */
+  roles?: string[];
+  /** Признак блокировки */
+  isBlocked?: boolean;
   /** Флаг инициализации состояния */
   initialized: boolean;
 }
@@ -71,8 +84,11 @@ export interface UserProfile {
   avatarUrl?: string | null;
   /** Дата создания */
   createdAt?: string | null;
-  /** Другие поля из backend */
-  [key: string]: any;
+
+  /** Признак, что пользователь заблокирован (только админ) */
+  isBlocked?: boolean;
+  /** Список ролей пользователя (может содержать 'Admin') */
+  roles?: string[];
 }
 
 /**
@@ -89,22 +105,42 @@ export interface Advertisement {
   price?: number | null;
   /** Категория */
   category?: string;
-  /** Статус ('active' | 'sold' | 'archived') */
+  /** Статус ('active' | 'sold' | 'archived'| 'hidden') */
   status?: string;
+  /** Является ли объявление видимым (альтернативно) */
+  isVisible?: boolean;
   /** Тип объявления: 0=Sell,1=Buy,2=Service */
   type?: number;
   /** Флаг договорной цены */
   isNegotiable?: boolean;
+  /** Объявление скрыто */
+  isHidden?: boolean;
+  /** Объявление удалено */
+  isDeleted?: boolean;
   /** ID владельца объявления */
   ownerId?: number;
   /** Логин владельца */
   ownerUserName?: string;
-  /** Изображения (URL списка, как в API) */
+  /** Изображения (список объектов: id, url, isMain, order) */
+  images?: AdImageDto[];
+  /** Изображения (URL списка, как в API - устарело) */
   imageUrls?: string[];
+  /** ID главного изображения (если есть) */
+  mainImageId?: number;
   /** Дата создания */
   createdAt: string;
-  /** Дата обновления */
+  /** Дата обновления (только в ответе). */
   updatedAt?: string;
+}
+
+/**
+ * Изображение из бэкенда (AdImageDto)
+ */
+export interface AdImageDto {
+  id: number;
+  url: string;
+  isMain: boolean;
+  order: number;
 }
 
 /**

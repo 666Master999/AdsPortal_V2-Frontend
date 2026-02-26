@@ -47,8 +47,23 @@
         <div class="mt-3 text-muted">Опубликовано: {{ formatDate(ad.createdAt) }}</div>
       </div>
 
-      <div class="mt-4">
+      <div class="mt-4 d-flex flex-wrap gap-2">
         <router-link class="btn btn-outline-secondary" :to="{ name: 'adsShowcase' }">Вернуться в витрину</router-link>
+
+        <template v-if="canManage">
+          <router-link
+            class="btn btn-primary"
+            :to="{ name: 'editAd', params: { id: String(ad.id) } }"
+          >Редактировать</router-link>
+
+          <button class="btn btn-warning" @click="toggleVisibility" :disabled="actionLoading">
+            {{ adVisible ? 'Скрыть' : 'Показать' }}
+          </button>
+
+          <button class="btn btn-danger" @click="confirmDelete" :disabled="actionLoading">
+            Удалить
+          </button>
+        </template>
       </div>
 
       <!-- lightbox modal -->
@@ -78,23 +93,46 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { fetchAd } from '@/api/adsService';
+import { fetchAd, deleteAd, setAdVisibility } from '@/api/adsService';
+import { useAbortable } from '@/composables/useAbortable';
 import type { Advertisement } from '@/types';
-import { API_BASE_URL } from '@/config/apiConfig';
-import { formatDate, formatPrice } from '@/utils/format';
+import { normalizeImageUrl, adTypeLabel, displayPrice } from '@/utils/adHelpers';
+
+import { useAuthStore } from '@/stores/authStore';
+import { formatDate } from '@/utils/format';
 
 const route = useRoute();
 const id = String(route.params.id || '');
 
-const loading = ref(true);
-const error = ref('');
+const { loading, error, run } = useAbortable('Ошибка при загрузке объявления');
 const ad = ref<Advertisement | null>(null);
+const actionLoading = ref(false);
+
+const auth = useAuthStore();
 const images = ref<string[]>([]);
 const mainIndex = ref(0);
 
 const lightboxOpen = ref(false);
+
+// computed helpers for management
+const canManage = computed(() => {
+  if (!auth.isAuthenticated) return false;
+  if (auth.isAdmin) return true;
+  if (auth.userIsBlocked) return false;
+  return auth.isOwn(ad.value?.ownerId);
+});
+
+const adVisible = computed(() => {
+  // infer visibility from status or explicit flag
+  if (!ad.value) return false;
+  // assume status !== 'archived' means visible
+  if (typeof ad.value.isVisible === 'boolean') {
+    return ad.value.isVisible;
+  }
+  return ad.value.status !== 'hidden' && ad.value.status !== 'archived';
+});
 const lightboxIndex = ref(0);
 const lightbox = ref<HTMLElement | null>(null);
 const lightboxZoom = ref(false);
@@ -106,32 +144,8 @@ let isPanning = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
-function normalizedImage(url?: string) {
-  if (!url) return '';
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  const base = API_BASE_URL.replace(/\/$/, '');
-  return url.startsWith('/') ? base + url : base + '/' + url;
-}
-
-function resolveTypeField(a: Advertisement | null) {
-  if (!a) return undefined;
-  const t = (a as any).type ?? (a as any).category ?? null;
-  if (t === null || t === undefined) return undefined;
-  if (typeof t === 'number') return t;
-  if (t === 'Sell' || t === 'Buy') return t;
-  const n = Number(t);
-  return Number.isNaN(n) ? t : n;
-}
-
-function adTypeLabel(a: Advertisement | null) {
-  const t = resolveTypeField(a);
-  if (t === 'Sell' || Number(t) === 0) return 'Продам';
-  if (t === 'Buy' || Number(t) === 1) return 'Куплю';
-  if (Number(t) === 2) return 'Услуги';
-  return '—';
-}
-
 const selectThumbnail = (idx: number) => {
+  // no change
   mainIndex.value = idx;
 };
 
@@ -206,6 +220,44 @@ const endPan = () => {
 };
 
 
+// action helpers
+
+async function toggleVisibility() {
+  if (!ad.value) return;
+  actionLoading.value = true;
+  try {
+    await setAdVisibility(ad.value.id, !adVisible.value);
+    // update local state
+    if (ad.value) {
+      if (typeof ad.value.isVisible === 'boolean') {
+        ad.value.isVisible = !ad.value.isVisible;
+      } else {
+        ad.value.status = adVisible.value ? 'hidden' : 'active';
+      }
+    }
+  } catch (e) {
+    console.error('Ошибка изменения видимости', e);
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+function confirmDelete() {
+  if (!ad.value) return;
+  if (!confirm('Удалить объявление? Это действие можно будет отменить только админом.')) return;
+  actionLoading.value = true;
+  deleteAd(ad.value.id)
+    .then(() => {
+      // после удаления перенаправляем на витрину
+      window.alert('Объявление помечено как удалённое');
+      window.location.assign('/ads');
+    })
+    .catch((e) => {
+      console.error('Ошибка при удалении', e);
+    })
+    .finally(() => { actionLoading.value = false; });
+}
+
 onMounted(async () => {
   // add pan listeners once attached
   document.addEventListener('mousemove', doPan);
@@ -214,21 +266,44 @@ onMounted(async () => {
   document.addEventListener('keydown', onKeyDown);
 
   try {
-    const res = await fetchAd(id);
-    ad.value = res.data;
-    images.value = (ad.value?.imageUrls || []).map(u => normalizedImage(u));
-    mainIndex.value = 0;
-    // reset lightbox as well
-    lightboxIndex.value = 0;
-    lightboxOpen.value = false;
+    const res = await run(() => fetchAd(id));
+    if (res) {
+      ad.value = res.data;
+      
+      // Попробовать использовать новый список images, если есть
+      if (ad.value?.images && ad.value.images.length > 0) {
+        // Сортируем по 'order', на случай если бэкенд не отсортировал
+        const sorted = [...ad.value.images].sort((a, b) => a.order - b.order);
+        const cb = ad.value.updatedAt ? `v=${encodeURIComponent(ad.value.updatedAt)}` : `v=${Date.now()}`;
+        images.value = sorted.map(i => {
+          const raw = i.url || '';
+          const norm = normalizeImageUrl(raw);
+          if (raw.startsWith('blob:')) return norm;
+          return norm + (raw.includes('?') ? '&' : '?') + cb;
+        });
+
+        // Устанавливаем основной индекс на изображение с isMain
+        const midx = sorted.findIndex(i => i.isMain);
+        mainIndex.value = midx >= 0 ? midx : 0;
+      } else {
+        // Фолбэк на старые imageUrls
+        const cb = ad.value?.updatedAt ? `v=${encodeURIComponent(ad.value.updatedAt)}` : `v=${Date.now()}`;
+        images.value = (ad.value?.imageUrls || []).map(u => {
+          const raw = u || '';
+          const norm = normalizeImageUrl(raw);
+          if (raw.startsWith('blob:')) return norm;
+          return norm + (raw.includes('?') ? '&' : '?') + cb;
+        });
+        mainIndex.value = 0;
+      }
+      
+      lightboxIndex.value = 0;
+      lightboxOpen.value = false;
+    }
   } catch (err: any) {
     if (err?.response?.status === 404) {
       error.value = 'Объявление не найдено';
-      return;
     }
-    error.value = err?.message || 'Ошибка при загрузке объявления';
-  } finally {
-    loading.value = false;
   }
 });
 
@@ -238,18 +313,8 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onKeyDown);
 });
 
-function displayPrice(a: Advertisement | null) {
-  if (!a) return '—';
-  if (a.isNegotiable === true) return 'Договорная';
-  if (a.price === 0) return 'Бесплатно';
-  return formatPrice(a.price ?? undefined);
-}
 
 </script>
-
-<style scoped>
-.zoomed { transform: scale(2); cursor: zoom-out; }
-</style>
 
 <style scoped>
 .img-fluid { max-height: 480px; object-fit: cover; width: 100%; }

@@ -69,7 +69,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { formatDate } from '@/utils/format';
-import { API_BASE_URL } from '@/config/apiConfig';
+import { normalizeImageUrl } from '@/utils/adHelpers';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchMyProfile } from '@/api/profileService';
@@ -94,14 +94,12 @@ const displayLogin = computed(() => profile.value.login || '');
 const avatarSrc = computed((): string | null => {
   const url = profile.value.avatarUrl || profile.value.avatar || null;
   if (!url) return null;
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  const base = API_BASE_URL.replace(/\/$/, '');
-  return (url.startsWith('/') ? base + url : base + '/' + url);
+  return normalizeImageUrl(url);
 });
 
 const initialLetter = computed(() => {
-  const name = profile.value.login || profile.value.login || '';
-  return name ? String(name).trim().charAt(0).toUpperCase() : '';
+  const name = profile.value.login || '';
+  return name ? name.trim().charAt(0).toUpperCase() : '';
 });
 
 const formattedDate = computed(() => formatDate(profile.value.createdAt));

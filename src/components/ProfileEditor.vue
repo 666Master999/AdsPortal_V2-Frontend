@@ -151,13 +151,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
+import { ref, reactive, watch } from 'vue';
 import { updateProfile, changePassword, uploadAvatar } from '@/api/profileService';
 import { getErrorMessage } from '@/utils/authUtils';
 import { validatePassword } from '@/utils/validators';
 import { useFormValidation } from '@/composables/useFormValidation';
 import type { UserProfile } from '@/types';
-import { watch } from 'vue';
 
 interface UpdateProfilePayload {
   email?: string;

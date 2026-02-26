@@ -64,8 +64,14 @@ export interface FetchAdsOptions {
  * ```
  */
 export async function createAd(
-  data: CreateAdPayload
+  data: CreateAdPayload | FormData
 ): Promise<AxiosResponse<Advertisement>> {
+  if (data instanceof FormData) {
+    return apiClient.post(API_ENDPOINTS.ADS_CREATE, data, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
+
   const formData = new FormData();
 
   // Normalize and append type as numeric string (backend expects 0|1|2)
@@ -184,17 +190,108 @@ export async function deleteAd(id: string | number): Promise<AxiosResponse> {
 }
 
 /**
+ * Меняет видимость объявления (скрывает или показывает).
+ * Работает только для владельца или администратора.
+ *
+ * @param id - ID объявления
+ * @param visible - true чтобы сделать объявление видимым, false чтобы скрыть
+ */
+export async function setAdVisibility(
+  id: string | number,
+  visible: boolean
+): Promise<AxiosResponse> {
+  return apiClient.patch(API_ENDPOINTS.ADS_VISIBILITY(id), { visible });
+}
+
+/**
  * Обновляет объявление (может обновить только владелец)
  * 
  * @param id - ID объявления
- * @param data - Новые данные объявления
+ * @param data - Новые данные объявления (например, поля, которые нужно изменить).
+ *               **Важно:** поле `updatedAt` не должно попадать сюда, оно выставляется
+ *               автоматически на сервере и не отправляется клиентом. В ответе
+ *               (через `Advertisement`/`AdDto`) дата присутствует при необходимости.
  * @returns Обновленное объявление
  * 
  * @throws { AxiosError } Если пользователь не является владельцем
  */
+export interface UpdateAdPayload {
+  type?: number;
+  title?: string;
+  description?: string;
+  price?: number | null;
+  isNegotiable?: boolean;
+  /** новые файлы для добавления */
+  newImages?: File[];
+  /** флаг: разместить новые файлы **перед** существующими при отправке */
+  newFirst?: boolean;
+  /** ID существующих изображений для удаления */
+  deleteImageIds?: (number | number[])[];
+  /** ID выбранного главного изображения */
+  mainImageId?: number;
+  /** порядок существующих изображений, массив ID */
+  imageOrder?: (number | number[])[];
+}
+
+
+// helper to append values (flattening nested arrays) as multiple form fields
+function appendList(
+  formData: FormData,
+  name: string,
+  values: any[] | undefined
+) {
+  if (!values) return;
+  // flatten arbitrarily deep just in case
+  const flat = ([] as any[]).concat(...values.map(v => Array.isArray(v) ? v : [v]));
+  flat.forEach(v => formData.append(name, String(v)));
+}
+
 export async function updateAd(
   id: string | number,
-  data: Partial<CreateAdPayload>
+  data: UpdateAdPayload | FormData
 ): Promise<AxiosResponse<Advertisement>> {
-  return apiClient.put(API_ENDPOINTS.ADS_UPDATE(id), data);
+  // callers can supply a prebuilt FormData (e.g. component forms) or a plain
+  // payload object.  If FormData is passed, we forward it directly without
+  // modification.  This keeps the API layer flexible and allows components
+  // like EditAd.vue to build the multipart body themselves.
+  if (data instanceof FormData) {
+    // Ensure axios calculates proper multipart boundary — clear Content-Type for this request
+    return apiClient.put(API_ENDPOINTS.ADS_UPDATE(id), data, { headers: { 'Content-Type': undefined } });
+  }
+
+  const formData = new FormData();
+  if (data.type !== undefined && data.type !== null) {
+    formData.append('type', String(data.type));
+  }
+  if (data.title !== undefined) {
+    formData.append('title', data.title);
+  }
+  if (data.description !== undefined) {
+    formData.append('description', data.description);
+  }
+  if (data.price !== undefined && data.price !== null) {
+    formData.append('price', String(data.price));
+  }
+  if (typeof data.isNegotiable === 'boolean') {
+    formData.append('isNegotiable', data.isNegotiable ? 'true' : 'false');
+  }
+
+  // if newFirst flag is set, append new images before any ordering fields
+  if (data.newImages && data.newImages.length && data.newFirst) {
+    data.newImages.slice(0, 10).forEach(img => formData.append('NewImages', img));
+  }
+
+  appendList(formData, 'DeleteImageIds', data.deleteImageIds);
+  if (data.mainImageId !== undefined && data.mainImageId !== null) {
+    formData.append('MainImageId', String(data.mainImageId));
+  }
+  appendList(formData, 'ImageOrder', data.imageOrder);
+
+  // append new images after order info if not already added
+  if (data.newImages && data.newImages.length && !data.newFirst) {
+    data.newImages.slice(0, 10).forEach(img => formData.append('NewImages', img));
+  }
+
+  // Ensure axios calculates proper multipart boundary when sending FormData
+  return apiClient.put(API_ENDPOINTS.ADS_UPDATE(id), formData, { headers: { 'Content-Type': undefined } });
 }

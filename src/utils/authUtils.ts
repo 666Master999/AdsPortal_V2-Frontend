@@ -4,6 +4,7 @@
  */
 
 import type { AxiosResponse } from 'axios';
+import type { AuthPayload } from '@/types';
 
 
 /**
@@ -182,10 +183,11 @@ export function isTokenExpired(token: string | null | undefined): boolean {
     const parts = token.split('.');
     if (parts.length !== 3) return true;
 
-    // Декодируем payload
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    // Декодируем payload и проверяем exp (expiration time в секундах)
+    const payload: any = JSON.parse(
+      atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))
+    );
 
-    // Проверяем exp (expiration time в секундах)
     const exp = payload.exp;
     if (!exp) return false; // Если нет exp, считаем валидным
 
@@ -193,6 +195,33 @@ export function isTokenExpired(token: string | null | undefined): boolean {
     return exp < now;
   } catch {
     return true;
+  }
+}
+
+/**
+ * Декодирует payload JWT в удобный объект без проверки подписи.
+ *
+ * @param token JWT токен
+ * @returns Распарсенный payload (AuthPayload) или null при ошибке
+ */
+export function decodeJwtPayload(token: string | null | undefined): AuthPayload | null {
+  if (!token || typeof token !== 'string') return null;
+
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = atob(payload);
+    const json = decodeURIComponent(
+      decoded
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(json) as AuthPayload;
+  } catch {
+    return null;
   }
 }
 

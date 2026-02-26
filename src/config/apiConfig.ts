@@ -43,6 +43,8 @@ export const API_ENDPOINTS = {
   USERS_CHANGE_PASSWORD: '/api/users/profile/change-password',
   USERS_SEARCH: '/api/users/search',
   USERS_LIST: '/api/users',
+  USERS_BLOCK: (id: string | number) => `/api/users/${id}/block`,
+  USERS_UNBLOCK: (id: string | number) => `/api/users/${id}/unblock`,
 
   // Ads endpoints
   ADS_LIST: '/api/ads',
@@ -50,5 +52,6 @@ export const API_ENDPOINTS = {
   ADS_GET: (id: string | number) => `/api/ads/${id}`,
   ADS_UPDATE: (id: string | number) => `/api/ads/${id}`,
   ADS_DELETE: (id: string | number) => `/api/ads/${id}`,
+  ADS_VISIBILITY: (id: string | number) => `/api/ads/${id}/visibility`, // patch visibility (owner/admin)
   ADS_BY_USER: (userId: string | number) => `/api/ads/user/${userId}`
 } as const;

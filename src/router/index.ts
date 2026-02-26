@@ -5,20 +5,20 @@
  */
 
 import { createRouter, createWebHistory, RouteRecordRaw, Router } from 'vue-router';
-import HomeView from '@/views/HomeView.vue';
 import { useAuthStore } from '@/stores/authStore';
 
-/**
- * Ленивзагрузка компонентов для оптимизации бандла
- */
-const Login = () => import('@/pages/Login.vue');
-const Register = () => import('@/pages/Register.vue');
-const Profile = () => import('@/pages/Profile.vue');
-const UserProfile = () => import('@/pages/UserProfile.vue');
-const CreateAd = () => import('@/pages/CreateAd.vue');
-const NotFound = () => import('@/pages/NotFound.vue');
-const AdsShowcase = () => import('@/pages/AdsShowcase.vue');
-const AdDetails = () => import('@/pages/AdDetails.vue');
+// Прямой импорт компонентов (без ленивой загрузки)
+import HomeView from '@/views/HomeView.vue';
+import Login from '@/pages/Login.vue';
+import Register from '@/pages/Register.vue';
+import Profile from '@/pages/Profile.vue';
+import UserProfile from '@/pages/UserProfile.vue';
+import CreateAd from '@/pages/CreateAd.vue';
+import EditAd from '@/pages/EditAd.vue';
+import NotFound from '@/pages/NotFound.vue';
+import AdsShowcase from '@/pages/AdsShowcase.vue';
+import AdDetails from '@/pages/AdDetails.vue';
+import AdminUsers from '@/pages/AdminUsers.vue';
 
 /**
  * Расширенные метаданные маршрута
@@ -31,6 +31,8 @@ declare module 'vue-router' {
     guestOnly?: boolean;
     /** Название страницы для title */
     title?: string;
+    /** Только для администраторов */
+    requiresAdmin?: boolean;
   }
 }
 
@@ -104,23 +106,43 @@ const routes: Array<RouteRecordRaw> = [
       requiresAuth: true,
       title: 'Создание объявления'
     }
-  }
-  ,
+  },
+  {
+    path: '/ads/:id/edit',
+    name: 'editAd',
+    component: EditAd,
+    props: true,
+    meta: {
+      requiresAuth: true,
+      title: 'Редактирование объявления'
+    }
+  },
+  {
+    path: '/admin/users',
+    name: 'adminUsers',
+    component: AdminUsers,
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Управление пользователями'
+    }
+  },
+
   {
     path: '/ads',
     name: 'adsShowcase',
     component: AdsShowcase,
     meta: { title: 'Витрина объявлений' }
-  }
-  ,
+  },
+
   {
     path: '/ads/:id',
     name: 'adDetails',
     component: AdDetails,
     props: true,
     meta: { title: 'Детали объявления' }
-  }
-  ,
+  },
+
   {
     // Catch-all 404 route
     path: '/:pathMatch(.*)*',
@@ -135,7 +157,10 @@ const routes: Array<RouteRecordRaw> = [
  */
 const router: Router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes
+  routes,
+  scrollBehavior(_to, _from, savedPosition) {
+    return savedPosition ?? { top: 0 };
+  }
 });
 
 /**
@@ -164,6 +189,7 @@ router.beforeEach(async (to, _from, next) => {
 
   const requiresAuth = !!to.meta?.requiresAuth;
   const guestOnly = !!to.meta?.guestOnly;
+  const requiresAdmin = !!to.meta?.requiresAdmin;
 
   // Проверка: маршрут требует авторизации, а пользователь не авторизован
   if (requiresAuth && !auth.isAuthenticated) {
@@ -172,6 +198,11 @@ router.beforeEach(async (to, _from, next) => {
 
   // Проверка: маршрут только для гостей, а пользователь авторизован
   if (guestOnly && auth.isAuthenticated) {
+    return next({ name: 'home' });
+  }
+
+  // Проверка: маршрут требует прав админа
+  if (requiresAdmin && !auth.isAdmin) {
     return next({ name: 'home' });
   }
 

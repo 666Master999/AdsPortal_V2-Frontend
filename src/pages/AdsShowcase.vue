@@ -53,18 +53,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue';
+import { ref, watch, computed } from 'vue';
+import { useAuthStore } from '@/stores/authStore';
 import AdCard from '@/components/AdCard.vue';
 import { fetchAds } from '@/api/adsService';
 import { useAbortable } from '@/composables/useAbortable';
 import type { Advertisement } from '@/types';
 
+const auth = useAuthStore();
 const tab = ref<'All' | 'Sell' | 'Buy' | 'Service'>('All');
 const ads = ref<Advertisement[]>([]);
+
 const filteredAds = computed(() => {
-  if (tab.value === 'All') return ads.value;
+  let list = ads.value;
+
+  // remove hidden/невидимые объявления для обычных пользователей
+  if (!auth.isAdmin) {
+    list = list.filter(ad => {
+      // Изначально полагаемся на то, что бэкенд отфильтровал,
+      // но для верности проверяем доступные флаги
+      if (ad.isDeleted) return false;
+      if (ad.isHidden) return false;
+      if (typeof ad.isVisible === 'boolean' && !ad.isVisible) return false;
+      return ad.status !== 'hidden' && ad.status !== 'archived';
+    });
+  }
+
+  if (tab.value === 'All') return list;
   const typeNum = tab.value === 'Sell' ? 0 : tab.value === 'Buy' ? 1 : tab.value === 'Service' ? 2 : null;
-  return ads.value.filter(ad => ad.type === typeNum);
+  return list.filter(ad => ad.type === typeNum);
 });
 const page = ref<number>(1);
 const limit = ref<number>(50);
@@ -73,6 +90,9 @@ const hasMore = ref<boolean>(false);
 const { loading, run } = useAbortable('Не удалось загрузить объявления');
 
 async function load() {
+  if (!auth.initialized) {
+    try { await auth.init(); } catch {}
+  }
   try {
     const opts: any = { page: page.value, limit: limit.value };
     if (tab.value === 'Sell') opts.type = 0;
@@ -110,9 +130,6 @@ function onLimitChange() {
 }
 
 watch(() => tab.value, () => { page.value = 1; load(); }, { immediate: true });
-watch(() => page.value, load);
-
-onMounted(load);
 </script>
 
 <style scoped>

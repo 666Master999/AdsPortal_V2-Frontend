@@ -12,8 +12,27 @@
             <span v-else>Загрузка...</span>
           </button>
 
+          <!-- admin link -->
+          <router-link
+            v-if="auth.isAdmin"
+            class="btn btn-outline-warning me-2"
+            :to="{ name: 'adminUsers' }"
+          >
+            Пользователи
+          </router-link>
+
           <!-- вставить рядом с Кабинет/Выйти -->
-          <router-link class="btn btn-success me-2" :to="{ name: 'createAd' }">Создать объявление</router-link>
+          <router-link
+            class="btn btn-success me-2"
+            :to="{ name: 'createAd' }"
+            :class="{ disabled: auth.userIsBlocked }"
+            :aria-disabled="auth.userIsBlocked"
+            @click="(e) => { if (auth.userIsBlocked) e.preventDefault(); }"
+          >
+            Создать объявление
+          </router-link>
+          <!-- если заблокирован, подсказка -->
+          <span v-if="auth.userIsBlocked" class="text-danger small">(вы заблокированы)</span>
 
 
           <button class="btn btn-danger" @click="onLogout">Выйти</button>

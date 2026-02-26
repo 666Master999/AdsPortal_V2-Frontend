@@ -11,8 +11,9 @@
 import { defineStore } from 'pinia';
 import { apiClient } from '@/api/apiClient';
 import { TOKEN_KEY, API_ENDPOINTS } from '@/config/apiConfig';
-import { isTokenExpired } from '@/utils/authUtils';
+import { isTokenExpired, decodeJwtPayload } from '@/utils/authUtils';
 import type { AuthPayload, AuthState } from '@/types';
+
 
 const STORAGE_KEY = TOKEN_KEY || 'auth_token';
 
@@ -36,45 +37,37 @@ const STORAGE_KEY = TOKEN_KEY || 'auth_token';
  * ```
  */
 export const useAuthStore = defineStore('auth', {
-  state: (): AuthState & { client: typeof apiClient } => ({
+  state: (): AuthState => ({
     /** JWT токен доступа */
     token: null,
     /** Логин пользователя */
     login: null,
     /** Публичный ID пользователя (хранится как число) */
     publicId: null,
+    /** Список ролей (['Admin'] и т.п.) */
+    roles: [],
+    /** Флаг блокировки текущего юзера */
+    isBlocked: false,
     /** Флаг инициализации состояния */
     initialized: false,
-    /** Axios client для API запросов */
-    client: apiClient
   }),
 
   getters: {
-    /**
-     * Нормализованный логин пользователя (пустая строка если не авторизован)
-     */
+    /** Логин текущего пользователя */
     userLogin: (state) => state.login || '',
-
-    /**
-     * Нормализованный публичный ID пользователя или null
-     */
-    userId: (state) => (state.publicId != null ? String(state.publicId) : null),
-
-    /**
-     * Проверка если пользователь авторизован и токен не протух
-     */
+    /** Есть ли у пользователя административная роль */
+    isAdmin: (state) => (state.roles ?? []).some(r => String(r).toLowerCase() === 'admin'),
+    /** Заблокирован ли текущий пользователь */
+    userIsBlocked: (state) => !!state.isBlocked,
+    /** Нормализованный публичный ID пользователя или null */
+    userId: (state): string | null => (state.publicId != null ? String(state.publicId) : null),
+    /** Проверка если пользователь авторизован и токен не протух */
     isAuthenticated: (state) => Boolean(state.token && !isTokenExpired(state.token)),
-
-    /**
-     * Проверка истечения срока действия токена
-     */
+    /** Проверка истечения срока действия токена */
     isTokenExpired: (state) => state.token ? isTokenExpired(state.token) : true,
-
     /**
      * Вспомогательный метод для проверки владельца профиля/ресурса
-     * @param state - Состояние store
-     * @returns Функция для проверки владельца
-     * 
+     *
      * @example
      * ```ts
      * if (auth.isOwn(profileId)) {
@@ -86,70 +79,22 @@ export const useAuthStore = defineStore('auth', {
       if (!id) return false;
       const sid = state.publicId != null ? String(state.publicId) : null;
       return sid === String(id) || state.login === String(id);
-    }
+    },
   },
 
   actions: {
-    /**
-     * Декодирует JWT payload из токена
-     * Поддерживает URL-safe base64 декодирование
-     * 
-     * @param token - JWT токен
-     * @returns Распарсенный payload или null
-     * 
-     * @internal
-     */
-    decodeJwtPayload(token: string | null | undefined): AuthPayload | null {
-      try {
-        if (!token || typeof token !== 'string') return null;
 
-        const parts = token.split('.');
-        if (parts.length !== 3) return null;
-
-        // URL-safe base64 декодирование
-        const payload = parts[1]
-          .replace(/-/g, '+')
-          .replace(/_/g, '/');
-
-        const decoded = atob(payload);
-
-        // Декодируем UTF-8
-        const json = decodeURIComponent(
-          decoded
-            .split('')
-            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-            .join('')
-        );
-
-        return JSON.parse(json) as AuthPayload;
-      } catch {
-        return null;
-      }
-    },
-
-    /**
-     * Устанавливает Authorization header для apiClient
-     * 
-     * @param token - JWT токен (или null для удаления)
-     * 
-     * @internal
-     */
-    setAuthToken(token: string | null): void {
+    /** Устанавливает Authorization header для apiClient */
+    setAuthToken(token: string | null) {
       if (token) {
-        this.client.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       } else {
-        delete this.client.defaults.headers.common['Authorization'];
+        delete apiClient.defaults.headers.common['Authorization'];
       }
     },
 
-    /**
-     * Устанавливает публичный ID пользователя с валидацией
-     * 
-     * @param id - ID для установки (может быть число, строка или null)
-     * 
-     * @internal
-     */
-    setPublicId(id: number | string | null | undefined): void {
+    /** Устанавливает публичный ID пользователя с проверкой */
+    setPublicId(id: number | string | null | undefined) {
       if (id == null || id === '') {
         this.publicId = null;
         return;
@@ -159,15 +104,8 @@ export const useAuthStore = defineStore('auth', {
       this.publicId = Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
     },
 
-    /**
-     * Применяет payload из JWT к состоянию store
-     * Извлекает login и publicId из различных возможных полей
-     * 
-     * @param payload - Распарсенный JWT payload
-     * 
-     * @internal
-     */
-    applyPayload(payload: AuthPayload | null | undefined): void {
+    /** Применяет payload JWT к состоянию, включая login/ID/роли */
+    applyPayload(payload: AuthPayload | null | undefined) {
       if (!payload) return;
 
       this.login = payload.login ?? payload.username ?? null;
@@ -181,19 +119,23 @@ export const useAuthStore = defineStore('auth', {
         const sub = payload.sub ?? payload.userId ?? null;
         this.setPublicId(sub);
       }
+
+      // роли и блокировка из payload (если сервер их поместил в JWT)
+      if (Array.isArray(payload.roles)) {
+        this.roles = payload.roles.map((r: string) => String(r));
+      }
+      if (typeof payload.isBlocked === 'boolean') {
+        this.isBlocked = payload.isBlocked;
+      }
     },
 
     /**
      * Инициализирует состояние аутентификации при загрузке приложения
      * Восстанавливает токен из localStorage и валидирует его
-     * 
-     * @example
-     * ```ts
-     * // Обычно вызывается в router guard
-     * await auth.init();
-     * ```
+     *
+     * Обычно используется в guard `router.beforeEach`.
      */
-    async init(): Promise<void> {
+    async init() {
       if (this.initialized) return;
 
       const token = localStorage.getItem(STORAGE_KEY);
@@ -206,20 +148,23 @@ export const useAuthStore = defineStore('auth', {
           this.token = token;
           this.setAuthToken(token);
 
-          const payload = this.decodeJwtPayload(token);
+          const payload = decodeJwtPayload(token);
           this.applyPayload(payload);
 
-          // Если данные не получены из токена — запросим профиль
-          if (!this.publicId && !this.login) {
-            try {
-              const res = await this.client.get(API_ENDPOINTS.USERS_PROFILE);
-              const data = res?.data || {};
-              this.login = this.login ?? data.login ?? data.username ?? null;
-              this.setPublicId(data.publicId ?? data.id ?? data.userId ?? null);
-            } catch {
-              // Токен невалиден — логируем пользователя
-              this.logout();
+          // Попробуем получить профиль сервера, чтобы подтянуть роли / флаг блокировки
+          try {
+            const res = await apiClient.get(API_ENDPOINTS.USERS_PROFILE);
+            const data = res?.data || {};
+            this.login = this.login ?? data.login ?? data.username ?? null;
+            this.setPublicId(data.publicId ?? data.id ?? data.userId ?? null);
+            if (Array.isArray(data.roles)) {
+              this.roles = data.roles.map((r: any) => String(r));
             }
+            if (typeof data.isBlocked === 'boolean') {
+              this.isBlocked = data.isBlocked;
+            }
+          } catch (err) {
+            // игнорируем ошибку запроса профиля, 401 обработан снизу
           }
         }
       }
@@ -228,20 +173,12 @@ export const useAuthStore = defineStore('auth', {
     },
 
     /**
-     * Устанавливает новый токен и обновляет состояние
-     * Сохраняет токен в localStorage и применяет payload
-     * 
-     * @param token - JWT токен от сервера
-     * @throws Не выбрасывает исключения, но логирует в консоль если что-то не так
-     * 
-     * @example
-     * ```ts
-     * const response = await api.post('/auth/login', credentials);
-     * const token = response.data.token;
-     * auth.setToken(token);
-     * ```
+     * Устанавливает новый JWT- токен, сохраняет в localStorage и обновляет заголовок
+     * После установки автоматически применяет данные из payload.
+     *
+     * @param token JWT токен или `null` для очистки.
      */
-    setToken(token: string | null): void {
+    setToken(token: string | null) {
       if (!token) {
         this.logout();
         return;
@@ -251,21 +188,15 @@ export const useAuthStore = defineStore('auth', {
       localStorage.setItem(STORAGE_KEY, token);
       this.setAuthToken(token);
 
-      const payload = this.decodeJwtPayload(token);
+      const payload = decodeJwtPayload(token);
       this.applyPayload(payload);
     },
 
     /**
      * Логирует пользователя и очищает состояние
-     * Удаляет токен из localStorage и очищает все данные пользователя
-     * 
-     * @example
-     * ```ts
-     * auth.logout();
-     * router.push({ name: 'login' });
-     * ```
+     * Удаляет токен из localStorage и обнуляет все поля.
      */
-    logout(): void {
+    logout() {
       this.token = null;
       this.login = null;
       this.publicId = null;
@@ -287,11 +218,14 @@ export const useAuthStore = defineStore('auth', {
      * }
      * ```
      */
-    async fetchUserId(): Promise<number | null> {
+    /**
+     * @returns {Promise<number|null>}
+     */
+    async fetchUserId() {
       if (this.publicId) return this.publicId;
 
       try {
-        const res = await this.client.get(API_ENDPOINTS.USERS_PROFILE);
+        const res = await apiClient.get(API_ENDPOINTS.USERS_PROFILE);
         const data = res?.data || {};
 
         this.login = this.login ?? data.login ?? data.username ?? null;
@@ -313,7 +247,7 @@ export const useAuthStore = defineStore('auth', {
      */
     async refreshToken(): Promise<boolean> {
       try {
-        const res = await this.client.post(API_ENDPOINTS.AUTH_REFRESH);
+        const res = await apiClient.post(API_ENDPOINTS.AUTH_REFRESH);
         const newToken = res?.data?.token || res?.data?.accessToken;
 
         if (newToken) {
@@ -330,3 +264,7 @@ export const useAuthStore = defineStore('auth', {
     }
   }
 });
+
+// заглушка: отдельный тип, чтобы store можно было именованно импортировать
+export type AuthStore = ReturnType<typeof useAuthStore>;
+

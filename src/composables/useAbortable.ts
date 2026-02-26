@@ -62,10 +62,10 @@ export function useAbortable<T = any>(
   defaultErrorMessage: string = 'Произошла ошибка'
 ): UseAbortableReturn<T> {
   /** Состояние загрузки */
-  let loading = ref(false);
+  const loading = ref(false);
 
   /** Состояние ошибки */
-  let error = ref<string | null>(null);
+  const error = ref<string | null>(null);
 
   /** AbortController для отмены запроса */
   let controller: AbortController | null = null;

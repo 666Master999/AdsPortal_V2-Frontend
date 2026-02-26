@@ -90,3 +90,21 @@ export async function listUsers(
 ): Promise<AxiosResponse<UserProfile[]>> {
   return apiClient.get(API_ENDPOINTS.USERS_LIST, { params: { page, limit } });
 }
+
+/**
+ * Блокирует пользователя (только админ)
+ * @param id - ID пользователя
+ */
+export async function blockUser(id: string | number): Promise<AxiosResponse> {
+  return apiClient.patch(API_ENDPOINTS.USERS_BLOCK(id));
+}
+
+/**
+ * Разблокирует пользователя (только админ)
+ * @param id - ID пользователя
+ */
+export async function unblockUser(id: string | number): Promise<AxiosResponse> {
+  return apiClient.patch(API_ENDPOINTS.USERS_UNBLOCK(id));
+}
+
+

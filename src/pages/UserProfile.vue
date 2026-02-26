@@ -42,7 +42,10 @@
 
             <div class="mb-3">
               <label class="form-label text-muted">Логин</label>
-              <div class="form-control-plaintext"><strong>{{ displayLogin }}</strong></div>
+              <div class="form-control-plaintext d-flex align-items-center">
+                <strong>{{ displayLogin }}</strong>
+                <span v-if="profile.isBlocked" class="badge bg-danger ms-2">Заблокирован</span>
+              </div>
             </div>
 
             <div class="mb-3">
@@ -62,6 +65,17 @@
 
             <div class="d-flex gap-2 mt-3">
               <button class="btn btn-outline-secondary" @click="loadProfile" :disabled="loading">Обновить</button>
+
+              <!-- admin tools: block/unblock -->
+              <button
+                v-if="auth.isAdmin && !isOwnProfile"
+                class="btn"
+                :class="profile.isBlocked ? 'btn-success' : 'btn-danger'"
+                @click="toggleBlock"
+                :disabled="blockLoading"
+              >
+                {{ profile.isBlocked ? 'Разблокировать' : 'Заблокировать' }}
+              </button>
             </div>
           </div>
 
@@ -75,9 +89,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { formatDate } from '@/utils/format';
-import { API_BASE_URL } from '@/config/apiConfig';
+import { normalizeImageUrl } from '@/utils/adHelpers';
 import { useAuthStore } from '@/stores/authStore';
 import { fetchUserProfile } from '@/api/profileService';
+import { blockUser, unblockUser } from '@/api/userService';
 import { useAbortable } from '@/composables/useAbortable';
 import type { UserProfile } from '@/types';
 
@@ -97,9 +112,7 @@ const displayLogin = computed((): string => profile.value.login || '');
 const avatarSrc = computed((): string | null => {
   const url = profile.value.avatarUrl || profile.value.avatar || null;
   if (!url) return null;
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  const base = API_BASE_URL.replace(/\/$/, '');
-  return (url.startsWith('/') ? base + url : base + '/' + url);
+  return normalizeImageUrl(url);
 });
 
 const initialLetter = computed(() => {
@@ -107,6 +120,7 @@ const initialLetter = computed(() => {
   return name ? String(name).trim().charAt(0).toUpperCase() : '';
 });
 const { loading, error, run } = useAbortable('Не удалось загрузить профиль');
+const blockLoading = ref(false);
 
 const formattedDate = computed(() => formatDate(profile.value.createdAt));
 
@@ -116,6 +130,7 @@ const isOwnProfile = computed(() => {
 });
 
 async function loadProfile() {
+  // we rely on API to supply isBlocked flag in user profile
   try {
     const res = await run((signal: AbortSignal) => fetchUserProfile(props.id, { signal }));
     if (res) profile.value = res.data;
@@ -125,6 +140,23 @@ async function loadProfile() {
       return;
     }
     // 401 will be handled globally; other errors already stored in error
+  }
+}
+
+async function toggleBlock() {
+  if (!profile.value.id) return;
+  blockLoading.value = true;
+  try {
+    if (profile.value.isBlocked) {
+      await unblockUser(profile.value.id);
+    } else {
+      await blockUser(profile.value.id);
+    }
+    await loadProfile();
+  } catch (e) {
+    console.error('Ошибка при изменении блокировки', e);
+  } finally {
+    blockLoading.value = false;
   }
 }
 

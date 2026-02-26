@@ -15,6 +15,7 @@
 | POST | `/users/profile/avatar` | ✓ | `FormData(image)` | `{ avatarUrl }` |
 | GET | `/users/profiles/{id}` | ✓ | - | `PublicUser` |
 | POST | `/ads` | ✓ | `FormData(title, price, type, description?, images)` | `AdDto` |
+| PUT | `/ads/{id}` | ✓ | `FormData` or JSON (type?, title?, price?, description?, isNegotiable?, images?, removeImageUrls?) | `AdDto` |
 | GET | `/ads` | - | `?page=1&limit=50` (опционально) | `AdDto[]` |
 | GET | `/ads/{id}` | - | - | `AdDto` |
 
@@ -122,6 +123,26 @@ isNegotiable: false                   (опционально, по умолча
 description: "Отличное состояние"     (необязательно, макс 3000 символов)
 images: [file1, file2, file3]         (необязательно, макс 10 штук)
 ```
+
+### PUT /ads/{id}
+```
+# для обновления используется multipart/form-data
+Content-Type: multipart/form-data
+
+# доступные поля (все опциональны)
+
+- type?: 0|1|2
+- title?: string
+- description?: string
+- price?: number
+- isNegotiable?: boolean
+
+- NewImages?: [File,...]           — файлы для загрузки
+- DeleteImageIds?: [number,...]    — ID существующих картинок для удаления
+- MainImageId?: number            — ID изображения, которое станет главным
+- ImageOrder?: [number,...]       — порядок существующих изображений по их ID
+```
+
 
 ---
 

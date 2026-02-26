@@ -16,9 +16,7 @@ import { API_BASE_URL, API_TIMEOUT } from '@/config/apiConfig';
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: API_TIMEOUT,
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  // Do not set default Content-Type here — allow per-request headers
 });
 
 /**
@@ -35,43 +33,13 @@ apiClient.interceptors.response.use(
       console.warn('Unauthorized response', error?.response?.data);
     }
 
+    if (status === 403) {
+      // Запрос запрещён — возможно пользователь не имеет прав или заблокирован
+      console.warn('Forbidden response', error?.response?.data);
+    }
+
     return Promise.reject(error);
   }
 );
-
-/**
- * Расширяем axios client дополнительными методами для типизации
- */
-export const apiService = {
-  /**
-   * GET запрос с типизацией
-   */
-  get: <T = any>(url: string, config?: any) =>
-    apiClient.get<T>(url, config),
-
-  /**
-   * POST запрос с типизацией
-   */
-  post: <T = any>(url: string, data?: any, config?: any) =>
-    apiClient.post<T>(url, data, config),
-
-  /**
-   * PUT запрос с типизацией
-   */
-  put: <T = any>(url: string, data?: any, config?: any) =>
-    apiClient.put<T>(url, data, config),
-
-  /**
-   * PATCH запрос с типизацией
-   */
-  patch: <T = any>(url: string, data?: any, config?: any) =>
-    apiClient.patch<T>(url, data, config),
-
-  /**
-   * DELETE запрос с типизацией
-   */
-  delete: <T = any>(url: string, config?: any) =>
-    apiClient.delete<T>(url, config)
-};
 
 export default apiClient;

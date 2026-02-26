@@ -77,19 +77,12 @@ async function fetchHealth(): Promise<void> {
 
 onMounted(async () => {
   try {
-    // если стор ещё не инициализирован — дождёмся init
     if (!auth.initialized) {
-      if (typeof auth.init === 'function') {
-        await auth.init();
-      } else if (typeof (auth as any).initAuth === 'function') {
-        await (auth as any).initAuth();
-      }
+      await auth.init();
     }
   } catch (err) {
-    // не блокируем UI, но логируем
     console.warn('Auth init failed', err);
   } finally {
-    // после инициализации или если она уже была — делаем health check
     fetchHealth();
   }
 });
